@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <link rel="stylesheet" href="style.css" />
+  <script src="app.js"></script>
+</head>
+<body class="antialiased">
+
+<div class="main-container">
+  <!-- Header & Toggle -->
+  <div class="card bg-white mb-6">
+    <h1 class="page-title">Arsitektur Register Interaktif</h1>
+    <p class="page-subtitle">Pelajari perbedaan tata letak, ukuran, dan bahasa mesin secara dinamis.</p>
+    
+    <!-- Architecture Toggle -->
+    <div class="arch-toggle-container">
+      <div class="arch-toggle-label">Arsitektur:</div>
+      <button id="toggle-x64" onclick="setArch('x64')" class="arch-btn active">x64 (64-bit)</button>
+      <button id="toggle-x86" onclick="setArch('x86')" class="arch-btn inactive">x86 (32-bit)</button>
+    </div>
+  </div>
+
+  <!-- Main Tabs -->
+  <div class="nav-group" id="mainTabs">
+    <button class="tab-btn active" onclick="switchMainGroup('gpr', this)">General Purpose</button>
+    <button class="tab-btn" onclick="switchMainGroup('ptr', this)">Index & Pointers</button>
+    <button class="tab-btn" onclick="switchMainGroup('seg', this)">Segments & Flags</button>
+    <button class="tab-btn" onclick="switchMainGroup('ftn', this)">Catatan Kaki</button>
+  </div>
+
+  <!-- Dynamic Containers -->
+  <div id="group-gpr">
+    <div class="nav-group mb-4" id="gprTabs">
+      <button id="tab-btn-ax" class="tab-btn active !py-1 !px-3" onclick="switchSubReg('ax', 'gpr', this)">RAX</button>
+      <button id="tab-btn-bx" class="tab-btn !py-1 !px-3" onclick="switchSubReg('bx', 'gpr', this)">RBX</button>
+      <button id="tab-btn-cx" class="tab-btn !py-1 !px-3" onclick="switchSubReg('cx', 'gpr', this)">RCX</button>
+      <button id="tab-btn-dx" class="tab-btn !py-1 !px-3" onclick="switchSubReg('dx', 'gpr', this)">RDX</button>
+    </div>
+    <div id="gpr-content"></div>
+  </div>
+
+  <div id="group-ptr" class="hidden">
+    <div class="nav-group mb-4" id="ptrTabs">
+      <button id="tab-btn-sp" class="tab-btn active !py-1 !px-3" onclick="switchSubReg('sp', 'ptr', this)">RSP</button>
+      <button id="tab-btn-bp" class="tab-btn !py-1 !px-3" onclick="switchSubReg('bp', 'ptr', this)">RBP</button>
+      <button id="tab-btn-si" class="tab-btn !py-1 !px-3" onclick="switchSubReg('si', 'ptr', this)">RSI</button>
+      <button id="tab-btn-di" class="tab-btn !py-1 !px-3" onclick="switchSubReg('di', 'ptr', this)">RDI</button>
+      <button id="tab-btn-ip" class="tab-btn !py-1 !px-3" onclick="switchSubReg('ip', 'ptr', this)">RIP</button>
+    </div>
+    <div id="ptr-content"></div>
+  </div>
+
+  <div id="group-seg" class="hidden">
+    <div class="nav-group mb-4" id="segTabs">
+      <button id="tab-btn-seg" class="tab-btn active !py-1 !px-3" onclick="switchSubReg('seg', 'seg', this)">Segment Registers</button>
+      <button id="tab-btn-flg" class="tab-btn !py-1 !px-3" onclick="switchSubReg('flg', 'seg', this)">RFLAGS</button>
+    </div>
+    <div id="seg-content"></div>
+  </div>
+
+  <div id="group-ftn" class="hidden">
+    <div class="card" id="ftn-content">
+      <!-- Footnotes populated by JS -->
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // currentArch, setArch(), archData() are available globally from app.js
+
+  /* --- DATA MODEL --- */
+  const db = {
+    // === GPR ===
+    ax: {
+      group: 'gpr', badge: 'badge-gpr', badgeText: 'Accumulator',
+      title: { x64: 'RAX', x86: 'EAX' },
+      desc: {
+        x64: 'Register 64-bit utama untuk operasi aritmetika dan <b>nilai kembalian (return value)</b> fungsi.',
+        x86: 'Register 32-bit utama untuk operasi aritmetika dan <b>nilai kembalian (return value)</b> fungsi.'
+      },
+      diagArgs: { x64: ['RAX','EAX','AX','AH','AL'], x86: ['EAX', 'AX', 'AH', 'AL'] },
+      info: ['Operasi aritmetika dasar: <code>ADD</code>, <code>SUB</code>, <code>MUL</code>, <code>DIV</code>.', 'Menyimpan hasil kembalian (return value) fungsi setelah instruksi <code>RET</code>.'],
+      warn: ['Berubah pada setiap instruksi matematis.', 'Kompiler tidak menjaga nilainya saat memanggil fungsi lain (<b>Caller-saved</b>).'],
+      cpp: { x64: `long long add(long long a, long long b) {\n    return a + b;\n}`, x86: `int add(int a, int b) {\n    return a + b;\n}` },
+      asm: {
+        x64: `; Asumsi x64: a di RDI, b di RSI\nmov rax, rdi    ; 48 89 f8\nadd rax, rsi    ; 48 01 f0\nret             ; c3`,
+        x86: `; Asumsi x86: argumen diambil dari Stack\nmov eax, [esp+4] ; 8b 44 24 04\nadd eax, [esp+8] ; 03 44 24 08\nret              ; c3`
+      },
+      opcodes: {
+        x64: [["MOV rax, rdi", "48 89 F8", "Salin register 64-bit (REX.W)"], ["ADD rax, rsi", "48 01 F0", "Tambahkan RSI ke RAX"]],
+        x86: [["MOV eax, [esp+4]", "8B 44 24 04", "Baca memori stack 32-bit ke EAX"], ["ADD eax, [esp+8]", "03 44 24 08", "Tambahkan nilai memori stack"]]
+      },
+      anim: {
+        x64: { title: "Perkalian 64-bit (RAX & RDX)", code: ["mov rax, 500", "mov rcx, 10", "mul rcx        // RDX:RAX = RAX * RCX"], regs: ["RAX", "RCX", "RDX"], steps: [{l:-1, v:["0", "0", "0"]}, {l:0, v:["500", "0", "0"]}, {l:1, v:["500", "10", "0"]}, {l:2, v:["5000", "10", "0"]}] },
+        x86: { title: "Perkalian 32-bit (EAX & EDX)", code: ["mov eax, 500", "mov ecx, 10", "mul ecx        // EDX:EAX = EAX * ECX"], regs: ["EAX", "ECX", "EDX"], steps: [{l:-1, v:["0", "0", "0"]}, {l:0, v:["500", "0", "0"]}, {l:1, v:["500", "10", "0"]}, {l:2, v:["5000", "10", "0"]}] }
+      }
+    },
+    bx: {
+      group: 'gpr', badge: 'badge-gpr', badgeText: 'Base Register',
+      title: { x64: 'RBX', x86: 'EBX' },
+      desc: {
+        x64: 'Secara historis base pointer. Di arsitektur x64, utamanya adalah register general <b>callee-saved</b>.',
+        x86: 'Digunakan sebagai base pointer untuk pengindeksan array memori. Register <b>callee-saved</b> utama.'
+      },
+      diagArgs: { x64: ['RBX','EBX','BX','BH','BL'], x86: ['EBX', 'BX', 'BH', 'BL'] },
+      info: ['Menyimpan alamat dasar (base address) suatu array/struct.'],
+      warn: ['<b>Callee-saved:</b> Jika fungsi Anda mengubah nilai aslinya, Anda WAJIB menyimpannya di stack di awal dan memulihkannya sebelum kembali.'],
+      cpp: { x64: `long long getX(struct Point* p) {\n    return p->x;\n}`, x86: `int getX(struct Point* p) {\n    return p->x;\n}` },
+      asm: {
+        x64: `; Pointer p ada di RDI\nmov rbx, rdi    ; 48 89 fb\nmov rax, [rbx]  ; 48 8b 03\nret             ; c3`,
+        x86: `; Pointer p dikirim via Stack\nmov ebx, [esp+4]; 8b 5c 24 04\nmov eax, [ebx]  ; 8b 03\nret             ; c3`
+      },
+      opcodes: {
+        x64: [["MOV rbx, rdi", "48 89 FB", "Salin RDI ke RBX"], ["MOV rax, [rbx]", "48 8B 03", "Baca memori dari RBX"]],
+        x86: [["MOV ebx, [esp+4]", "8B 5C 24 04", "Baca memori stack"], ["MOV eax, [ebx]", "8B 03", "Baca memori dari EBX"]]
+      },
+      anim: {
+        x64: { title: "Pengindeksan Memori 64-bit", code: ["mov rbx, 0x2000", "mov rcx, 2", "mov rax, [rbx + rcx*8] // Ambil 64-bit"], regs: ["RBX", "RCX", "RAX", "Mem[0x2010]"], steps: [{l:-1, v:["0x0", "0", "0", "0xDEADBEEF"]}, {l:0, v:["0x2000", "0", "0", "0xDEADBEEF"]}, {l:1, v:["0x2000", "2", "0", "0xDEADBEEF"]}, {l:2, v:["0x2000", "2", "0xDEADBEEF", "0xDEADBEEF"]}] },
+        x86: { title: "Pengindeksan Memori 32-bit", code: ["mov ebx, 0x2000", "mov ecx, 2", "mov eax, [ebx + ecx*4] // Ambil 32-bit"], regs: ["EBX", "ECX", "EAX", "Mem[0x2008]"], steps: [{l:-1, v:["0x0", "0", "0", "0xBEEF"]}, {l:0, v:["0x2000", "0", "0", "0xBEEF"]}, {l:1, v:["0x2000", "2", "0", "0xBEEF"]}, {l:2, v:["0x2000", "2", "0xBEEF", "0xBEEF"]}] }
+      }
+    },
+    cx: {
+      group: 'gpr', badge: 'badge-gpr', badgeText: 'Counter',
+      title: { x64: 'RCX', x86: 'ECX' },
+      desc: {
+        x64: 'Penghitung instruksi loop. Di Windows x64, memegang <b>argumen pertama</b> dari fungsi.',
+        x86: 'Register 32-bit yang dikhususkan sebagai penghitung (counter) iterasi atau pergeseran bit.'
+      },
+      diagArgs: { x64: ['RCX','ECX','CX','CH','CL'], x86: ['ECX', 'CX', 'CH', 'CL'] },
+      info: ['Operasi loop: <code>LOOP</code> otomatis mengurangi nilainya.', 'Operasi shift bit (menggeser ke kiri/kanan sebanyak register CL).'],
+      warn: ['Otomatis berkurang 1 pada tiap instruksi awalan string <code>REP</code>.'],
+      cpp: { x64: `void loop(long long n) {\n    while(n > 0) { n--; }\n}`, x86: `void loop(int n) {\n    while(n > 0) { n--; }\n}` },
+      asm: {
+        x64: `.loop_start:\n  dec rcx         ; 48 ff c9\n  jnz .loop_start ; 75 fc`,
+        x86: `mov ecx, [esp+4]\n.loop_start:\n  dec ecx         ; 49\n  jnz .loop_start ; 75 fb`
+      },
+      opcodes: {
+        x64: [["DEC rcx", "48 FF C9", "RCX = RCX - 1"], ["JNZ label", "75 xx", "Lompat jika Zero Flag = 0"]],
+        x86: [["DEC ecx", "49", "ECX = ECX - 1 (1 byte opcode hemat!)"], ["LOOP label", "E2 xx", "ECX--, lompat jika != 0"]]
+      },
+      anim: {
+        x64: { title: "Loop & Decrement 64-bit", code: ["mov rcx, 2      // Set counter", "loop_start:", "  add rax, 5    // Lakukan aksi", "  dec rcx       // RCX--", "  jnz loop_start // Lompat"], regs: ["RCX", "RAX"], steps: [{l:-1, v:["0", "0"]}, {l:0, v:["2", "0"]}, {l:2, v:["2", "5"]}, {l:3, v:["1", "5"]}, {l:4, v:["1", "5"]}, {l:2, v:["1", "10"]}, {l:3, v:["0", "10"]}, {l:4, v:["0", "10"]}] },
+        x86: { title: "Loop & Decrement 32-bit", code: ["mov ecx, 2      // Set counter", "loop_start:", "  add eax, 5    // Lakukan aksi", "  dec ecx       // ECX--", "  jnz loop_start // Lompat"], regs: ["ECX", "EAX"], steps: [{l:-1, v:["0", "0"]}, {l:0, v:["2", "0"]}, {l:2, v:["2", "5"]}, {l:3, v:["1", "5"]}, {l:4, v:["1", "5"]}, {l:2, v:["1", "10"]}, {l:3, v:["0", "10"]}, {l:4, v:["0", "10"]}] }
+      }
+    },
+    dx: {
+      group: 'gpr', badge: 'badge-gpr', badgeText: 'Data Register',
+      title: { x64: 'RDX', x86: 'EDX' },
+      desc: {
+        x64: 'Pasangan RAX untuk perkalian. Menyimpan argumen ketiga (Linux) atau kedua (Windows).',
+        x86: 'Pasangan EAX untuk operasi 64-bit awal (EDX:EAX) dan pembagian.'
+      },
+      diagArgs: { x64: ['RDX','EDX','DX','DH','DL'], x86: ['EDX', 'DX', 'DH', 'DL'] },
+      info: ['Menyimpan sisa pembagian (remainder) dari <code>DIV</code> / <code>IDIV</code>.', 'Menyimpan bagian atas (high bits) dari hasil <code>MUL</code>.'],
+      warn: ['Instruksi <code>CQO/CDQ</code> menimpa register ini sepenuhnya dengan sign-extension dari Accumulator.'],
+      cpp: { x64: `long long rem(long long a, long long b) {\n    return a % b; \n}`, x86: `int rem(int a, int b) {\n    return a % b; \n}` },
+      asm: {
+        x64: `cqo             ; 48 99 (Extend RAX->RDX)\nidiv rcx        ; 48 f7 f9\nmov rax, rdx    ; 48 89 d8`,
+        x86: `mov eax, [esp+4]\nmov ecx, [esp+8]\ncdq             ; 99\nidiv ecx        ; f7 f1\nmov eax, edx`
+      },
+      opcodes: {
+        x64: [["CQO", "48 99", "Perluas tanda RAX -> RDX:RAX"], ["IDIV rcx", "48 F7 F9", "RAX = Hasil, RDX = Sisa (Remainder)"]],
+        x86: [["CDQ", "99", "Perluas tanda EAX -> EDX:EAX"], ["IDIV ecx", "F7 F1", "EAX = Hasil, EDX = Sisa"]]
+      },
+      anim: {
+        x64: { title: "Pembagian 64-bit (DIV & Sisa)", code: ["mov rax, 15    // Pembilang", "mov rcx, 4     // Penyebut", "cqo            // Sign-extend RAX ke RDX", "idiv rcx       // RAX=Hasil(3), RDX=Sisa(3)"], regs: ["RAX", "RCX", "RDX"], steps: [{l:-1, v:["0", "0", "0"]}, {l:0, v:["15", "0", "0"]}, {l:1, v:["15", "4", "0"]}, {l:2, v:["15", "4", "0"]}, {l:3, v:["3", "4", "3"]}] },
+        x86: { title: "Pembagian 32-bit (DIV & Sisa)", code: ["mov eax, 15    // Pembilang", "mov ecx, 4     // Penyebut", "cdq            // Sign-extend EAX ke EDX", "idiv ecx       // EAX=Hasil(3), EDX=Sisa(3)"], regs: ["EAX", "ECX", "EDX"], steps: [{l:-1, v:["0", "0", "0"]}, {l:0, v:["15", "0", "0"]}, {l:1, v:["15", "4", "0"]}, {l:2, v:["15", "4", "0"]}, {l:3, v:["3", "4", "3"]}] }
+      }
+    },
+    
+    // === PTR ===
+    sp: {
+      group: 'ptr', badge: 'badge-ptr', badgeText: 'Stack Pointer',
+      title: { x64: 'RSP', x86: 'ESP' },
+      desc: {
+        x64: 'Penunjuk dinamis ke elemen teratas Stack (Top of Stack) 64-bit.',
+        x86: 'Penunjuk dinamis ke elemen teratas Stack (Top of Stack) 32-bit.'
+      },
+      diagArgs: { x64: ['RSP','ESP','SP',null,'SPL'], x86: ['ESP','SP',null,null] },
+      info: ['Menyimpan alamat memori dari variabel lokal saat ini.', 'Menyimpan alamat kembalian (Return Address) saat <code>CALL</code> dipanggil.'],
+      warn: ['<code>PUSH</code> akan <b>mengurangi</b> nilai Pointer (stack tumbuh ke bawah), lalu menulis data.', '<code>POP</code> membaca data, lalu <b>menambah</b> nilai Pointer.'],
+      cpp: { x64: `void func() {\n    long long local_var = 0x99;\n}`, x86: `void func() {\n    int local_var = 0x99;\n}` },
+      asm: {
+        x64: `sub rsp, 8      ; 48 83 ec 08 (Alokasi 8 byte)\nmov qword [rsp], 0x99\nadd rsp, 8      ; 48 83 c4 08 (Bebaskan)`,
+        x86: `sub esp, 4      ; 83 ec 04 (Alokasi 4 byte)\nmov dword [esp], 0x99\nadd esp, 4      ; 83 c4 04`
+      },
+      opcodes: {
+        x64: [["PUSH rax", "50", "RSP -= 8, tulis RAX ke [RSP]"], ["POP rax", "58", "Baca [RSP] ke RAX, RSP += 8"]],
+        x86: [["PUSH eax", "50", "ESP -= 4, tulis EAX ke [ESP]"], ["POP eax", "58", "Baca [ESP] ke EAX, ESP += 4"]]
+      },
+      anim: {
+        x64: { title: "Dinamika Stack Memory 64-bit", code: ["mov rax, 0x99", "push rax       // RSP-=8, tulis ke Stack", "mov rax, 0x00  // Hapus RAX", "pop rax        // Baca Stack, RSP+=8"], regs: ["RSP", "RAX", "Top of Stack"], steps: [{l:-1, v:["0xFFFF008", "0", "0"]}, {l:0, v:["0xFFFF008", "0x99", "0"]}, {l:1, v:["0xFFFF000", "0x99", "0x99"]}, {l:2, v:["0xFFFF000", "0x0", "0x99"]}, {l:3, v:["0xFFFF008", "0x99", "???"]}] },
+        x86: { title: "Dinamika Stack Memory 32-bit", code: ["mov eax, 0x99", "push eax       // ESP-=4, tulis ke Stack", "mov eax, 0x00  // Hapus EAX", "pop eax        // Baca Stack, ESP+=4"], regs: ["ESP", "EAX", "Top of Stack"], steps: [{l:-1, v:["0xFFFF004", "0", "0"]}, {l:0, v:["0xFFFF004", "0x99", "0"]}, {l:1, v:["0xFFFF000", "0x99", "0x99"]}, {l:2, v:["0xFFFF000", "0x0", "0x99"]}, {l:3, v:["0xFFFF004", "0x99", "???"]}] }
+      }
+    },
+    bp: {
+      group: 'ptr', badge: 'badge-ptr', badgeText: 'Base / Frame Pointer',
+      title: { x64: 'RBP', x86: 'EBP' },
+      desc: {
+        x64: 'Jangkar stabil (anchor) 64-bit untuk mengakses argumen atau variabel lokal.',
+        x86: 'Jangkar stabil 32-bit. Sangat esensial di x86 untuk mengakses argumen fungsi (karena argumen dikirim via Stack).'
+      },
+      diagArgs: { x64: ['RBP','EBP','BP',null,'BPL'], x86: ['EBP','BP',null,null] },
+      info: ['Mengakses lokal: <code>[rbp - 8]</code>. Mengakses argumen di x86: <code>[ebp + 8]</code>.', 'Penting untuk program debugger melacak Backtrace stack.'],
+      warn: ['Callee-saved (wajib dipulihkan).', 'Pada kompiler modern (O2/O3), pointer ini sering ditiadakan (<b>Frame Pointer Omission / FPO</b>).'],
+      cpp: { x64: `void demo() {\n    // body\n}`, x86: `void demo() {\n    // body\n}` },
+      asm: {
+        x64: `push rbp        ; 55 (Simpan frame lama)\nmov rbp, rsp    ; 48 89 e5 (Set jangkar)\n; ... body ...\nleave           ; c9\nret`,
+        x86: `push ebp        ; 55 (Simpan frame lama)\nmov ebp, esp    ; 89 e5 (Set jangkar)\n; ... body ...\nleave           ; c9\nret`
+      },
+      opcodes: {
+        x64: [["PUSH rbp", "55", "Simpan RBP lama ke stack"], ["LEAVE", "C9", "Pulihkan RSP dan RBP seketika"]],
+        x86: [["PUSH ebp", "55", "Simpan EBP lama ke stack"], ["LEAVE", "C9", "Pulihkan ESP dan EBP seketika"]]
+      },
+      anim: {
+        x64: { title: "Fungsi Prologue (Frame 64-bit)", code: ["// Masuk ke Fungsi Baru", "push rbp       // Simpan RBP pemanggil", "mov rbp, rsp   // RBP jadi basis baru", "sub rsp, 16    // Ruang variabel lokal"], regs: ["RSP", "RBP"], steps: [{l:-1, v:["0x1008", "0x2000"]}, {l:1, v:["0x1000", "0x2000"]}, {l:2, v:["0x1000", "0x1000"]}, {l:3, v:["0x0FF0", "0x1000"]}] },
+        x86: { title: "Fungsi Prologue (Frame 32-bit)", code: ["// Masuk ke Fungsi Baru", "push ebp       // Simpan EBP pemanggil", "mov ebp, esp   // EBP jadi basis baru", "sub esp, 16    // Ruang variabel lokal"], regs: ["ESP", "EBP"], steps: [{l:-1, v:["0x1004", "0x2000"]}, {l:1, v:["0x1000", "0x2000"]}, {l:2, v:["0x1000", "0x1000"]}, {l:3, v:["0x0FF0", "0x1000"]}] }
+      }
+    },
+    si: {
+      group: 'ptr', badge: 'badge-ptr', badgeText: 'Source Index',
+      title: { x64: 'RSI', x86: 'ESI' },
+      desc: {
+        x64: 'Pointer memori asal (source). Di Linux/Mac x64, ini memegang argumen fungsi ke-2.',
+        x86: 'Pointer memori asal (source) untuk manipulasi data besar (string/array).'
+      },
+      diagArgs: { x64: ['RSI','ESI','SI',null,'SIL'], x86: ['ESI','SI',null,null] },
+      info: ['Digunakan otomatis oleh instruksi <code>LODS</code> (baca) dan <code>MOVS</code> (salin).'],
+      warn: ['Nilainya otomatis bertambah/berkurang bergantung pada Direction Flag (DF).'],
+      cpp: { x64: `void copy_arr(char* dst, char* src, int len) {\n    // dst di RDI, src di RSI\n}`, x86: `void copy_arr(char* dst, char* src, int len) {\n    // Argumen di Stack\n}` },
+      asm: {
+        x64: `mov rdi, dst    ; Tujuan (RDI)\nmov rsi, src    ; Sumber (RSI)\nmov rcx, len    ; Jumlah byte\nrep movsb       ; f3 a4 (Salin massal)`,
+        x86: `mov edi, [esp+4] ; Tujuan (Stack)\nmov esi, [esp+8] ; Sumber (Stack)\nmov ecx, [esp+12]\nrep movsb        ; f3 a4`
+      },
+      opcodes: {
+        x64: [["REP MOVSB", "F3 A4", "Salin 1 byte dari [RSI] ke [RDI], ulangi RCX kali"]],
+        x86: [["REP MOVSB", "F3 A4", "Salin 1 byte dari [ESI] ke [EDI], ulangi ECX kali"]]
+      },
+      anim: {
+        x64: { title: "Salin Memori (rep movsb 64-bit)", code: ["mov rsi, 0x100 // Alamat Sumber", "mov rdi, 0x200 // Alamat Tujuan", "mov rcx, 2     // Salin 2 byte", "rep movsb      // [RDI++]=[RSI++], RCX--"], regs: ["RSI", "RDI", "RCX"], steps: [{l:-1, v:["0", "0", "0"]}, {l:0, v:["0x100", "0", "0"]}, {l:1, v:["0x100", "0x200", "0"]}, {l:2, v:["0x100", "0x200", "2"]}, {l:3, v:["0x102", "0x202", "0"]}] },
+        x86: { title: "Salin Memori (rep movsb 32-bit)", code: ["mov esi, 0x100 // Alamat Sumber", "mov edi, 0x200 // Alamat Tujuan", "mov ecx, 2     // Salin 2 byte", "rep movsb      // [EDI++]=[ESI++], ECX--"], regs: ["ESI", "EDI", "ECX"], steps: [{l:-1, v:["0", "0", "0"]}, {l:0, v:["0x100", "0", "0"]}, {l:1, v:["0x100", "0x200", "0"]}, {l:2, v:["0x100", "0x200", "2"]}, {l:3, v:["0x102", "0x202", "0"]}] }
+      }
+    },
+    di: {
+      group: 'ptr', badge: 'badge-ptr', badgeText: 'Destination Index',
+      title: { x64: 'RDI', x86: 'EDI' },
+      desc: {
+        x64: 'Pointer memori tujuan. Di Linux/Mac x64, ini memegang argumen fungsi ke-1.',
+        x86: 'Pointer memori tujuan untuk operasi string/array.'
+      },
+      diagArgs: { x64: ['RDI','EDI','DI',null,'DIL'], x86: ['EDI','DI',null,null] },
+      info: ['Digunakan otomatis oleh instruksi <code>STOS</code> (tulis memori) dan <code>SCAS</code> (cari memori).'],
+      warn: ['Bergantung pada Direction Flag (DF) apakah pointer maju atau mundur.'],
+      cpp: { x64: `void fill(char* arr, char val, int len) {\n    // memset manual\n}`, x86: `void fill(char* arr, char val, int len) {\n    // memset manual\n}` },
+      asm: {
+        x64: `mov rdi, arr    ; Pointer array (RDI)\nmov al, val     ; Nilai yg ditulis\nmov rcx, len    ; Berapa banyak\nrep stosb       ; f3 aa`,
+        x86: `mov edi, [esp+4] ; Array dari Stack\nmov al, [esp+8]  ; Val dari Stack\nmov ecx, [esp+12]\nrep stosb        ; f3 aa`
+      },
+      opcodes: {
+        x64: [["STOSQ", "48 AB", "Tulis RAX ke [RDI]; RDI += 8"]],
+        x86: [["STOSD", "AB", "Tulis EAX ke [EDI]; EDI += 4"]]
+      },
+      anim: {
+        x64: { title: "Isi Memori (stosb 64-bit)", code: ["mov rdi, 0x200 // Tujuan array", "mov al, 0xFF   // Nilai isi", "mov rcx, 3     // 3 byte", "rep stosb      // Tulis & Maju"], regs: ["RDI", "RCX", "Mem[0x200]"], steps: [{l:-1, v:["0", "0", "0x00"]}, {l:0, v:["0x200", "0", "0x00"]}, {l:1, v:["0x200", "0", "0x00"]}, {l:2, v:["0x200", "3", "0x00"]}, {l:3, v:["0x203", "0", "0xFFxFFxFF"]}] },
+        x86: { title: "Isi Memori (stosb 32-bit)", code: ["mov edi, 0x200 // Tujuan array", "mov al, 0xFF   // Nilai isi", "mov ecx, 3     // 3 byte", "rep stosb      // Tulis & Maju"], regs: ["EDI", "ECX", "Mem[0x200]"], steps: [{l:-1, v:["0", "0", "0x00"]}, {l:0, v:["0x200", "0", "0x00"]}, {l:1, v:["0x200", "0", "0x00"]}, {l:2, v:["0x200", "3", "0x00"]}, {l:3, v:["0x203", "0", "0xFFxFFxFF"]}] }
+      }
+    },
+    ip: {
+      group: 'ptr', badge: 'badge-ptr', badgeText: 'Instruction Pointer',
+      title: { x64: 'RIP', x86: 'EIP' },
+      desc: {
+        x64: 'Menyimpan alamat memori instruksi mesin BERIKUTNYA yang akan dieksekusi CPU.',
+        x86: 'Menyimpan alamat memori instruksi mesin BERIKUTNYA yang akan dieksekusi CPU.'
+      },
+      diagArgs: { x64: ['RIP','EIP','IP',null,null], x86: ['EIP','IP',null,null] },
+      info: {
+        x64: ['Otomatis maju setelah eksekusi.', 'Mendukung <b>RIP-relative addressing</b> di x64: memudahkan membuat Position Independent Code (PIC).'],
+        x86: ['Otomatis maju setelah eksekusi.', '<b>Perhatian:</b> x86 TIDAK mendukung EIP-relative addressing. Anda harus menggunakan trik khusus (contoh: instruksi <code>CALL</code> lalu <code>POP</code>) untuk mencari tahu posisi EIP di memori.']
+      },
+      warn: ['Tidak bisa diubah langsung dengan instruksi `mov`. Hanya bisa diubah oleh instruksi lompatan (<code>JMP</code>, <code>CALL</code>, <code>RET</code>, cabang <code>Jxx</code>).'],
+      cpp: { x64: `if (a == b) { \n    // Lompat\n}`, x86: `if (a == b) { \n    // Lompat\n}` },
+      asm: {
+        x64: `cmp rax, rbx    ; Bandingkan\njne .not_equal  ; 75 xx (Ubah RIP)\n; ... kode jika sama ...\n.not_equal:`,
+        x86: `cmp eax, ebx    ; Bandingkan\njne .not_equal  ; 75 xx (Ubah EIP)\n; ... kode jika sama ...\n.not_equal:`
+      },
+      opcodes: {
+        x64: [["JMP 0x10A", "EB 08", "Lompat paksa (Ubah RIP)"], ["CALL 0x10A", "E8 xx", "Taruh RIP saat ini ke Stack, ubah RIP"]],
+        x86: [["JMP 0x10A", "EB 08", "Lompat paksa (Ubah EIP)"], ["CALL 0x10A", "E8 xx", "Taruh EIP saat ini ke Stack, ubah EIP"]]
+      },
+      anim: {
+        x64: { title: "Aliran Lompatan (JMP 64-bit)", code: ["0x1000: mov rax, 1", "0x1004: jmp 0x100A", "0x1008: add rax, 99 // Diloncati!", "0x100A: mov rbx, rax"], regs: ["RIP (Instruksi Berikut)", "RAX", "RBX"], steps: [{l:-1, v:["0x1000", "0", "0"]}, {l:0, v:["0x1004", "1", "0"]}, {l:1, v:["0x100A", "1", "0"]}, {l:3, v:["0x100D", "1", "1"]}] },
+        x86: { title: "Aliran Lompatan (JMP 32-bit)", code: ["0x1000: mov eax, 1", "0x1004: jmp 0x100A", "0x1008: add eax, 99 // Diloncati!", "0x100A: mov ebx, eax"], regs: ["EIP (Instruksi Berikut)", "EAX", "EBX"], steps: [{l:-1, v:["0x1000", "0", "0"]}, {l:0, v:["0x1004", "1", "0"]}, {l:1, v:["0x100A", "1", "0"]}, {l:3, v:["0x100D", "1", "1"]}] }
+      }
+    },
+    
+    // === SEGMENTS & FLAGS ===
+    seg: {
+      group: 'seg', badge: 'badge-seg', badgeText: 'Segment Registers',
+      title: { x64: 'Segment Registers', x86: 'Segment Registers (16-bit)' },
+      desc: {
+        x64: 'Kumpulan register 16-bit historis (CS, DS, ES, FS, GS, SS). Di era 64-bit modern, kebanyakan dari mereka dinonaktifkan (dijadikan Flat Model), kecuali FS dan GS.',
+        x86: 'Kumpulan register 16-bit krusial di era 32-bit/16-bit yang digunakan OS untuk membagi memori menjadi segmen-segmen logis (Code, Data, Stack, dll).'
+      },
+      html: {
+        x64: `
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4 text-sm mt-4">
+          <div class="border border-slate-200 rounded p-3 bg-slate-50"><div class="font-bold text-green-700">CS, DS, ES, SS</div><div class="text-slate-500 text-xs">Diabaikan (Limit=0, Flat Memory)</div></div>
+          <div class="border border-green-300 rounded p-3 bg-green-50 shadow-sm"><div class="font-bold text-green-800">FS (TLS)</div><div class="text-slate-700 text-xs font-semibold">Aktif! (Biasa dipakai Linux)</div></div>
+          <div class="border border-green-300 rounded p-3 bg-green-50 shadow-sm"><div class="font-bold text-green-800">GS (TLS / TEB)</div><div class="text-slate-700 text-xs font-semibold">Aktif! (TEB di Windows x64)</div></div>
+        </div>
+        <div class="info-box mt-4">OS modern butuh cara menyimpan variabel unik per-thread (Thread Local Storage). Di <b>Windows x64</b>, register <b>GS</b> dimanfaatkan untuk menunjuk ke struktur Thread Environment Block (TEB) tanpa tabrakan dengan thread lain.</div>
+        <div class="flex flex-col md:flex-row gap-4 mt-4">
+          <div class="flex-1 border border-slate-200 rounded overflow-hidden">
+             <div class="bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 border-b border-slate-200 flex justify-between items-center">
+                <span>Akses Windows TEB (x64)</span>
+                <a href="https://app.x64.halb.it/" target="_blank" class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 flex items-center gap-1 font-normal bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shadow-sm transition-colors">Halb.it ↗</a>
+             </div>
+             <pre class="code-block"><code>; Mengambil PID/TID dari sistem x64\nmov rax, [gs:0x30] ; GS menunjuk ke TEB\nmov ebx, [rax+0x48] ; ClientId.TID</code></pre>
+          </div>
+        </div>
+        `,
+        x86: `
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4 text-sm mt-4">
+          <div class="border border-green-300 rounded p-3 bg-green-50 shadow-sm"><div class="font-bold text-green-800">CS, DS, SS</div><div class="text-slate-700 text-xs font-semibold">Aktif (Code, Data, Stack)</div></div>
+          <div class="border border-slate-200 rounded p-3 bg-slate-50"><div class="font-bold text-green-700">ES</div><div class="text-slate-500 text-xs">Extra Segment (String Ops)</div></div>
+          <div class="border border-green-300 rounded p-3 bg-green-50 shadow-sm"><div class="font-bold text-green-800">FS (TLS / TEB)</div><div class="text-slate-700 text-xs font-semibold">Aktif! (TEB di Windows x86)</div></div>
+        </div>
+        <div class="warn-box mt-4">Di <b>Windows x86 (32-bit)</b>, register <b>FS</b> memegang peran sangat penting karena ia yang menunjuk ke Thread Environment Block (TEB). Ini sering dimanfaatkan programmer shellcode untuk mencari alamat fungsi sistem.</div>
+        <div class="flex flex-col md:flex-row gap-4 mt-4">
+          <div class="flex-1 border border-slate-200 rounded overflow-hidden">
+             <div class="bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600 border-b border-slate-200 flex justify-between items-center">
+                <span>Akses Windows TEB (x86)</span>
+                <a href="https://app.x64.halb.it/" target="_blank" class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 flex items-center gap-1 font-normal bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shadow-sm transition-colors">Halb.it ↗</a>
+             </div>
+             <pre class="code-block"><code>; Mengambil PID/TID dari sistem x86\nmov eax, [fs:0x18] ; FS menunjuk ke TEB\nmov ebx, [eax+0x24] ; ClientId.TID</code></pre>
+          </div>
+        </div>
+        `
+      },
+      anim: {
+        x64: { title: "Membaca Segment GS (x64)", code: ["// Akses Thread Environment Block x64", "mov rax, [gs:0x30] // Base TEB", "mov ebx, [rax+0x48] // Ambil TID"], regs: ["Alamat Base GS", "RAX", "EBX"], steps: [{l:-1, v:["0x7FFF0000", "0", "0"]}, {l:1, v:["0x7FFF0000", "0x7FFF0000", "0"]}, {l:2, v:["0x7FFF0000", "0x7FFF0000", "1337"]}] },
+        x86: { title: "Membaca Segment FS (x86)", code: ["// Akses Thread Environment Block x86", "mov eax, [fs:0x18] // Base TEB", "mov ebx, [eax+0x24] // Ambil TID"], regs: ["Alamat Base FS", "EAX", "EBX"], steps: [{l:-1, v:["0x7FFF0000", "0", "0"]}, {l:1, v:["0x7FFF0000", "0x7FFF0000", "0"]}, {l:2, v:["0x7FFF0000", "0x7FFF0000", "1337"]}] }
+      }
+    },
+    flg: {
+      group: 'seg', badge: 'badge-flg', badgeText: 'Flags Register',
+      title: { x64: 'RFLAGS', x86: 'EFLAGS' },
+      desc: {
+        x64: 'RFLAGS (64-bit) memegang kumpulan bendera (bit individual). Berfungsi sebagai lampu indikator hasil operasi terakhir (apakah 0? Negatif? Overflow?).',
+        x86: 'EFLAGS (32-bit) memegang kumpulan bendera indikator yang selalu diperbarui CPU setelah mengeksekusi operasi matematis atau perbandingan.'
+      },
+      html: {
+        x64: `
+        <div class="flex gap-3 mb-6 flex-wrap text-xs text-center font-mono mt-4">
+          <div class="border border-slate-300 p-2 rounded bg-white flex-1 min-w-[70px]"><div class="font-bold text-slate-700">Bit 11</div><div class="mt-1 text-orange-600 font-bold text-lg">OF</div><div class="text-[10px] text-slate-500 mt-1">Overflow</div></div>
+          <div class="border border-slate-300 p-2 rounded bg-white flex-1 min-w-[70px]"><div class="font-bold text-slate-700">Bit 7</div><div class="mt-1 text-orange-600 font-bold text-lg">SF</div><div class="text-[10px] text-slate-500 mt-1">Sign (Neg)</div></div>
+          <div class="border border-slate-300 p-2 rounded bg-white flex-1 min-w-[70px]"><div class="font-bold text-slate-700">Bit 6</div><div class="mt-1 text-orange-600 font-bold text-lg">ZF</div><div class="text-[10px] text-slate-500 mt-1">Zero (0)</div></div>
+          <div class="border border-slate-300 p-2 rounded bg-white flex-1 min-w-[70px]"><div class="font-bold text-slate-700">Bit 0</div><div class="mt-1 text-orange-600 font-bold text-lg">CF</div><div class="text-[10px] text-slate-500 mt-1">Carry</div></div>
+        </div>
+        <div class="info-box mt-4">Di x64 (RFLAGS), bagian 32-bit ke atas (Upper 32) pada dasarnya tidak digunakan (dicadangkan/reserved oleh prosesor).</div>
+        `,
+        x86: `
+        <div class="flex gap-3 mb-6 flex-wrap text-xs text-center font-mono mt-4">
+          <div class="border border-slate-300 p-2 rounded bg-white flex-1 min-w-[70px]"><div class="font-bold text-slate-700">Bit 11</div><div class="mt-1 text-orange-600 font-bold text-lg">OF</div><div class="text-[10px] text-slate-500 mt-1">Overflow</div></div>
+          <div class="border border-slate-300 p-2 rounded bg-white flex-1 min-w-[70px]"><div class="font-bold text-slate-700">Bit 7</div><div class="mt-1 text-orange-600 font-bold text-lg">SF</div><div class="text-[10px] text-slate-500 mt-1">Sign (Neg)</div></div>
+          <div class="border border-slate-300 p-2 rounded bg-white flex-1 min-w-[70px]"><div class="font-bold text-slate-700">Bit 6</div><div class="mt-1 text-orange-600 font-bold text-lg">ZF</div><div class="text-[10px] text-slate-500 mt-1">Zero (0)</div></div>
+          <div class="border border-slate-300 p-2 rounded bg-white flex-1 min-w-[70px]"><div class="font-bold text-slate-700">Bit 0</div><div class="mt-1 text-orange-600 font-bold text-lg">CF</div><div class="text-[10px] text-slate-500 mt-1">Carry</div></div>
+        </div>
+        <div class="info-box mt-4">Lompatan bersyarat sangat bergantung pada bendera ini. Misalnya instruksi <code>JE</code> (Jump if Equal) akan melompat hanya jika <b>ZF = 1</b>.</div>
+        `
+      },
+      anim: {
+        x64: { title: "Perbandingan RFLAGS (x64)", code: ["mov rax, 5", "cmp rax, 5   // 5-5 = 0. ZF diset!", "cmp rax, 10  // 5-10 = Negatif. SF diset!"], regs: ["RAX", "ZF (Zero)", "SF (Sign)", "CF (Carry)"], steps: [{l:-1, v:["0", "0", "0", "0"]}, {l:0, v:["5", "0", "0", "0"]}, {l:1, v:["5", "1", "0", "0"]}, {l:2, v:["5", "0", "1", "1"]}] },
+        x86: { title: "Perbandingan EFLAGS (x86)", code: ["mov eax, 5", "cmp eax, 5   // 5-5 = 0. ZF diset!", "cmp eax, 10  // 5-10 = Negatif. SF diset!"], regs: ["EAX", "ZF (Zero)", "SF (Sign)", "CF (Carry)"], steps: [{l:-1, v:["0", "0", "0", "0"]}, {l:0, v:["5", "0", "0", "0"]}, {l:1, v:["5", "1", "0", "0"]}, {l:2, v:["5", "0", "1", "1"]}] }
+      }
+    }
+  };
+
+  const footnotes = [
+    {
+      title: { x64: "Caller-saved vs Callee-saved (x64)", x86: "Caller-saved vs Callee-saved (x86)" },
+      text: {
+        x64: "Di x64 (Linux System V & Windows), fungsi pemanggil berasumsi RAX, RCX, RDX, dan R8-R11 akan rusak nilainya setelah memanggil fungsi lain. Register yang wajib dijaga keutuhannya (Callee-saved) oleh fungsi yang dipanggil meliputi RBX, RBP, dan R12-R15.",
+        x86: "Di x86 (seperti aturan <code>cdecl</code>/<code>stdcall</code>), fungsi pemanggil berasumsi EAX, ECX, dan EDX akan rusak. Register yang wajib dijaga (Callee-saved) dan dipulihkan nilainya lewat Stack oleh fungsi yang dipanggil meliputi EBX, EBP, ESI, dan EDI."
+      }
+    },
+    {
+      title: { x64: "Sifat Stack: Tumbuh ke Bawah", x86: "Sifat Stack: Tumbuh ke Bawah" },
+      text: {
+        x64: "Memori Stack bertumbuh ke arah alamat memori yang lebih kecil. Instruksi <code>PUSH</code> akan <i>mengurangi</i> nilai pointer RSP sebesar 8 byte sebelum menaruh data. Hal ini berlawanan dengan operasi Heap yang bertumbuh ke atas.",
+        x86: "Memori Stack bertumbuh ke arah alamat memori yang lebih kecil. Instruksi <code>PUSH</code> akan <i>mengurangi</i> nilai pointer ESP sebesar 4 byte sebelum menaruh data. Hal ini berlawanan dengan operasi Heap yang bertumbuh ke atas."
+      }
+    },
+    {
+      title: { x64: "Ekstensi Nol Otomatis (Zero-Extension)", x86: "Operasi Parsial (Tanpa Ekstensi Nol)" },
+      text: {
+        x64: "Fitur spesifik penemuan arsitek AMD64: Menulis data ke sub-register 32-bit (contoh: <code>mov eax, 1</code>) akan secara otomatis dan implisit menghapus (meng-nol-kan) sisa 32-bit teratas pada RAX. Ini sengaja diciptakan demi memecah dependensi prosesor dan mempercepat eksekusi instruksi beruntun.",
+        x86: "Di x86 murni, aturan ekstensi nol otomatis ini tidak ada (karena ukuran maksimal register sudah mentok di 32-bit). Dan khusus operasi pada bagian kecil (seperti modifikasi <code>AX</code> atau <code>AL</code>), prosesor tidak akan menyentuh atau menghapus sisa bit teratas di EAX."
+      }
+    },
+    {
+      title: { x64: "Frame Pointer Omission (FPO)", x86: "Frame Pointer Omission (FPO)" },
+      text: {
+        x64: "Karena mayoritas argumen di x64 dikirim dengan cepat via register, pointer RBP sering kehilangan peran vital lamanya. Kompiler beroptimasi tinggi (seperti <code>gcc -O3</code>) sering meniadakan frame RBP (fitur FPO) dan memanfaatkannya murni sebagai register serbaguna (general-purpose) tambahan.",
+        x86: "Di x86, pointer EBP sangat krusial karena hampir semua argumen bertebaran di memori Stack (contoh <code>[ebp+8]</code>). Meskipun demikian, optimasi kompiler yang amat sangat agresif tetap bisa menerapkan FPO untuk menghemat register, dengan mengorbankan kemudahan <i>backtrace</i> saat melakukan debugging."
+      }
+    },
+    {
+      title: { x64: "RIP-Relative Addressing (PIC)", x86: "Position Independent Code (PIC) Klasik" },
+      text: {
+        x64: "Inovasi brilian x64! Kode bisa membaca memori relatif langsung terhadap posisinya saat ini, misal: <code>mov rax, [rip + 0x200]</code>. Ini membuat library (.dll/.so) <i>Position Independent Code</i> (PIC) sangat mudah dibuat dan aman diacak posisinya oleh sistem ASLR (Address Space Layout Randomization).",
+        x86: "Kelemahan historis x86 adalah <b>TIDAK</b> memiliki pengalamatan EIP-relatif. Untuk membuat library (PIC) yang dinamis, programmer harus memakai trik aneh: melakukan instruksi <code>CALL</code> ke baris berikutnya, lalu melakukan <code>POP</code> ke register (misal EBX) hanya demi mengetahui di koordinat memori mana kode mereka sedang berjalan."
+      }
+    },
+    {
+      title: { x64: "Calling Conventions (Aturan Parameter)", x86: "Calling Conventions (Aturan Parameter)" },
+      text: {
+        x64: "x64 berfokus pada kecepatan esktrem. Argumen dilempar melewati register (tanpa menyentuh RAM yang lambat). Linux/Mac (System V) memakai kombinasi: RDI, RSI, RDX, RCX, R8, R9. Windows memakai kombinasi: RCX, RDX, R8, R9.",
+        x86: "x86 cukup lambat di ranah ini karena aturan historis (<code>cdecl</code> atau <code>stdcall</code>) memaksa program untuk melempar argumen satu per satu secara manual ke dalam memori Stack (lewat rentetan instruksi <code>PUSH</code>) sebelum akhirnya melakukan instruksi <code>CALL</code>."
+      }
+    },
+    {
+      title: { x64: "Stack vs Heap", x86: "Stack vs Heap" },
+      text: {
+        x64: "Stack diatur otomatis dan instan oleh CPU lewat RSP (Last-In-First-Out, umumnya dibatasi 1-8MB per thread). Heap dialokasikan secara manual oleh programmer (<code>malloc</code>, <code>new</code>), tak terikat pada register khusus, kapasitas sangat luas, tapi lebih lambat dan rawan kebocoran (<i>memory leak</i>).",
+        x86: "Stack diatur otomatis dan instan oleh CPU lewat ESP (Last-In-First-Out, umumnya dibatasi 1-8MB per thread). Heap dialokasikan secara manual oleh programmer (<code>malloc</code>, <code>new</code>), tak terikat pada register khusus, kapasitas sangat luas, tapi lebih lambat dan rawan kebocoran (<i>memory leak</i>)."
+      }
+    },
+    {
+      title: { x64: "Direction Flag (DF) di RFLAGS", x86: "Direction Flag (DF) di EFLAGS" },
+      text: {
+        x64: "Operasi massal memori seperti <code>REP MOVSB</code> amat bergantung pada status bit DF di RFLAGS. Jika DF=0 (diset via instruksi <code>CLD</code>), pointer bergerak maju (RSI & RDI bertambah). Jika DF=1 (diset via <code>STD</code>), pointer bergerak mundur. Teknik ini esensial untuk copy data yang tumpang-tindih (overlap).",
+        x86: "Operasi massal memori seperti <code>REP MOVSB</code> amat bergantung pada status bit DF di EFLAGS. Jika DF=0 (diset via instruksi <code>CLD</code>), pointer bergerak maju (ESI & EDI bertambah). Jika DF=1 (diset via <code>STD</code>), pointer bergerak mundur. Manipulasi bendera ini sering dipakai oleh analis/pembuat malware untuk menyamarkan niat program."
+      }
+    },
+    {
+      title: { x64: "Pasangan Matematika (RDX:RAX)", x86: "Pasangan Matematika (EDX:EAX)" },
+      text: {
+        x64: "Satu register kadang tidak muat menampung angka. Mengalikan 64-bit dengan 64-bit akan menghasilkan produk raksasa 128-bit. Arsitektur menyelesaikannya dengan mengawinkan dua register. Bagian ekor (bawah) ditaruh di RAX, sementara kepalanya meluber tumpah ke RDX.",
+        x86: "Satu register kadang tidak muat. Mengalikan 32-bit dengan 32-bit akan menghasilkan produk ganda 64-bit. Arsitektur x86 mengawinkan dua register untuk menampungnya. Bagian ekor (bawah) ditaruh di EAX, sementara sisa kepalanya (<i>overflow</i>) ditampung di EDX."
+      }
+    },
+    {
+      title: { x64: "Opcode Heksadesimal & REX Prefix", x86: "Opcode Heksadesimal (Tanpa Prefix 64-bit)" },
+      text: {
+        x64: "Banyak instruksi mesin (opcode) x64 diawali angka '48' (contoh: <code>48 89 f8</code>). Angka '48' ini disebut sebagai awalan <b>REX.W</b> yang secara spesifik memerintahkan unit eksekusi CPU agar keluar dari mode kompatibilitas 32-bit, dan mengeksekusi operasi tersebut murni dalam ukuran lebar penuh 64-bit.",
+        x86: "Di arsitektur x86 murni, awalan <i>prefix</i> REX ini tidak dikenal (instruksi standar langsung dieksekusi alami dalam 32-bit, contoh <code>89 f8</code>). Awalan khusus (seperti <code>66</code>) hanya akan digunakan sesekali jika CPU butuh memanipulasi ukuran instruksi untuk berjalan dalam mode retro 16-bit."
+      }
+    }
+  ];
+
+  /* --- RENDERERS --- */
+  function generateRegDiagram(arch, args) {
+    if(!args) return '';
+    let is_x86 = (arch === 'x86');
+    let name_64, name_32, name_16, name_8h, name_8l;
+    if (is_x86) { [name_32, name_16, name_8h, name_8l] = args; } 
+    else { [name_64, name_32, name_16, name_8h, name_8l] = args; }
+
+    let html = `<div class="font-semibold text-slate-800 text-[13px] mb-2 mt-4 border-b border-slate-100 pb-1">Tata Letak Bit (${is_x86 ? '32-bit x86' : '64-bit x64'})</div><div class="reg-diagram">`;
+    if (!is_x86) html += `<div class="reg-row"><div class="reg-label">${name_64}</div><div class="reg-bits"><div class="bit-block bit-64 flex-1 text-[10px]">64-bit (${name_64})</div></div></div>`;
+    
+    html += `<div class="reg-row"><div class="reg-label">${name_32}</div><div class="reg-bits">`;
+    if (!is_x86) html += `<div class="bit-block bit-inactive flex-1">Upper 32</div>`;
+    html += `<div class="bit-block bit-32 flex-1 text-[10px]">32-bit (${name_32})</div></div></div>`;
+
+    html += `<div class="reg-row"><div class="reg-label">${name_16}</div><div class="reg-bits">`;
+    if (!is_x86) html += `<div class="bit-block bit-inactive flex-1" style="flex:3">Upper 48</div>`;
+    else html += `<div class="bit-block bit-inactive flex-1">Upper 16</div>`;
+    html += `<div class="bit-block bit-16 flex-1 text-[10px]">16-bit (${name_16})</div></div></div>`;
+
+    if (name_8l) {
+      html += `<div class="reg-row"><div class="reg-label">${name_8h ? name_8h+'/'+name_8l : name_8l}</div><div class="reg-bits">`;
+      if (!is_x86) html += `<div class="bit-block bit-inactive flex-1" style="flex:${name_8h ? 6 : 7}">Ignored</div>`;
+      else html += `<div class="bit-block bit-inactive flex-1" style="flex:${name_8h ? 2 : 3}">Ignored</div>`;
+      if (name_8h) html += `<div class="bit-block bit-8 flex-1 text-[9px] bg-pink-500">${name_8h}</div>`;
+      html += `<div class="bit-block bit-8 flex-1 text-[9px]">${name_8l}</div></div></div>`;
+    }
+    return html + `</div>`;
+  }
+
+  function renderOpcodes(ops) {
+    if(!ops) return '';
+    const rows = ops.map(o => `<tr class="border-b border-slate-100"><td class="py-1.5 px-2 font-mono font-bold text-blue-700 whitespace-nowrap">${o[0]}</td><td class="py-1.5 px-2 font-mono text-orange-600 whitespace-nowrap">${o[1]}</td><td class="py-1.5 px-2 text-slate-600">${o[2]}</td></tr>`).join('');
+    return `<table class="op-table"><thead><tr><th>Instruksi Assembly</th><th>Mesin (Hex)</th><th>Keterangan Aksi</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  function renderAnimUI(id, data) {
+    if(!data) return '';
+    const codeHtml = data.code.map((line, i) => `<div id="anim-${id}-line-${i}" class="anim-line font-mono text-[11px]">${line}</div>`).join('');
+    const regsHtml = data.regs.map((reg, i) => `<div class="flex justify-between items-center bg-white border border-slate-200 px-3 py-1.5 rounded shadow-sm"><span class="font-bold text-slate-500 text-[11px]">${reg}</span><span id="anim-${id}-val-${i}" class="font-mono text-[13px] text-blue-700 font-bold transition-all duration-300">0</span></div>`).join('');
+    return `
+      <div class="border border-slate-300 rounded-lg bg-slate-50 overflow-hidden shadow-sm mt-6 anim-player" data-anim="${id}">
+        <div class="bg-slate-200 px-3 py-2 border-b border-slate-300 flex justify-between items-center">
+          <div class="font-bold text-[13px] text-slate-800">Animasi Dinamis: ${data.title}</div>
+        </div>
+        <div class="p-3 flex flex-col md:flex-row gap-4">
+           <div class="flex-1 bg-slate-900 text-slate-300 py-2 rounded shadow-inner overflow-x-auto">${codeHtml}</div>
+           <div class="w-full md:w-[40%] flex flex-col gap-1.5 justify-center">${regsHtml}</div>
+        </div>
+        <div class="bg-slate-100 border-t border-slate-200 px-3 py-2 flex gap-2">
+           <button onclick="stepAnim('${id}')" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded shadow transition-colors flex items-center gap-1">Langkah ⏭️</button>
+           <button onclick="resetAnim('${id}')" class="px-3 py-1 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[11px] font-bold rounded shadow-sm transition-colors">Reset 🔄</button>
+        </div>
+      </div>`;
+  }
+
+  function renderApp() {
+    ['gpr','ptr','seg'].forEach(g => document.getElementById(`${g}-content`).innerHTML = '');
+    let firstGroupFlags = { gpr: true, ptr: true, seg: true };
+
+    for (let key in db) {
+      let reg = db[key];
+      
+      let d_title = archData(reg.title);
+      let d_desc = archData(reg.desc);
+      let d_diagArgs = archData(reg.diagArgs);
+      let d_cpp = archData(reg.cpp);
+      let d_asm = archData(reg.asm);
+      let d_opcodes = archData(reg.opcodes);
+      let d_anim = archData(reg.anim);
+      let d_info = archData(reg.info);
+      let d_warn = archData(reg.warn);
+      let d_html = archData(reg.html);
+
+      let tabBtn = document.getElementById(`tab-btn-${key}`);
+      if(tabBtn) tabBtn.innerText = d_title;
+
+      let isFirst = firstGroupFlags[reg.group];
+      firstGroupFlags[reg.group] = false;
+
+      let htmlContent = `
+        <div id="reg-${key}" class="card ${isFirst ? '' : 'hidden'}" data-group="${reg.group}">
+          <div class="flex items-center gap-3 mb-2"><h2 class="section-title mb-0">${d_title}</h2><span class="badge ${reg.badge}">${archData(reg.badgeText)}</span></div>
+          <p class="content-desc">${d_desc}</p>
+          ${d_diagArgs ? generateRegDiagram(currentArch, d_diagArgs) : ''}
+          ${d_html ? d_html : ''}
+          ${(d_info || d_warn) ? `
+          <div class="flex flex-col md:flex-row gap-4 mt-5">
+            ${d_info ? `<div class="info-box flex-1"><div class="font-bold mb-1 text-[13px] text-blue-800">📌 Info / Kapan Digunakan:</div><ul class="list-disc pl-4 mt-1 space-y-1">${d_info.map(i=>`<li>${i}</li>`).join('')}</ul></div>` : ''}
+            ${d_warn ? `<div class="warn-box flex-1"><div class="font-bold mb-1 text-[13px] text-amber-700">⚠️ Peringatan Tambahan:</div><ul class="list-disc pl-4 mt-1 space-y-1">${d_warn.map(i=>`<li>${i}</li>`).join('')}</ul></div>` : ''}
+          </div>` : ''}
+          ${(d_cpp && d_asm) ? `
+          <div class="flex flex-col lg:flex-row gap-4 mt-5">
+            <div class="flex-1 border border-slate-200 rounded overflow-hidden flex flex-col">
+               <div class="bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600 border-b border-slate-200 flex justify-between items-center">
+                 <span>Kode Level Tinggi (C/C++)</span>
+                 <a href="https://playcode.io/cpp-playground" target="_blank" class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 flex items-center gap-1 font-normal bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shadow-sm transition-colors">Playcode ↗</a>
+               </div>
+               <pre class="code-block h-full"><code>${d_cpp}</code></pre>
+            </div>
+            <div class="flex-1 border border-slate-200 rounded overflow-hidden flex flex-col">
+               <div class="bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600 border-b border-slate-200 flex justify-between items-center">
+                 <span>Bahasa Mesin & Assembly</span>
+                 <a href="https://app.x64.halb.it/" target="_blank" class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 flex items-center gap-1 font-normal bg-blue-50 px-2 py-0.5 rounded border border-blue-200 shadow-sm transition-colors">Halb.it ↗</a>
+               </div>
+               <pre class="code-block dark h-full"><code>${d_asm}</code></pre>
+            </div>
+          </div>` : ''}
+          
+          ${d_opcodes ? `
+          <div class="mt-5 border border-slate-200 rounded-lg overflow-x-auto w-full">
+             ${renderOpcodes(d_opcodes)}
+          </div>` : ''}
+
+          ${renderAnimUI(key, d_anim)}
+        </div>
+      `;
+      document.getElementById(`${reg.group}-content`).innerHTML += htmlContent;
+    }
+
+    let fnHtml = '<h2 class="section-title mb-4">Catatan Kaki Ekstra</h2>';
+    footnotes.forEach((fn, i) => {
+      let fTitle = archData(fn.title);
+      let fText = archData(fn.text);
+      fnHtml += `<div class="footnote-item"><div class="footnote-num">${i+1}</div><div><b class="text-slate-800">${fTitle}</b><br><span class="text-slate-500 mt-1 block">${fText}</span></div></div>`;
+    });
+    document.getElementById('ftn-content').innerHTML = fnHtml;
+
+    document.querySelectorAll('.anim-player').forEach(el => { el.currentStep = 0; updateAnimUI(el.dataset.anim, 0); });
+  }
+
+  /* --- ANIMATION LOGIC --- */
+  window.stepAnim = function(id) {
+    const el = document.querySelector(`[data-anim="${id}"]`);
+    const data = archData(db[id].anim);
+    el.currentStep = (el.currentStep + 1) % data.steps.length;
+    updateAnimUI(id, el.currentStep);
+  };
+  window.resetAnim = function(id) {
+    const el = document.querySelector(`[data-anim="${id}"]`);
+    el.currentStep = 0;
+    updateAnimUI(id, 0);
+  };
+  function updateAnimUI(id, stepIndex) {
+    const data = archData(db[id].anim);
+    const step = data.steps[stepIndex];
+    data.code.forEach((_, i) => {
+      const lineEl = document.getElementById(`anim-${id}-line-${i}`);
+      if(i === step.l) lineEl.classList.add('active');
+      else lineEl.classList.remove('active');
+    });
+    step.v.forEach((val, i) => {
+      const valEl = document.getElementById(`anim-${id}-val-${i}`);
+      if(valEl.innerText !== val) {
+        valEl.innerText = val;
+        valEl.classList.add('anim-val-change');
+        setTimeout(() => valEl.classList.remove('anim-val-change'), 300);
+      }
+    });
+  }
+
+  /* --- TABS LOGIC --- */
+  window.switchMainGroup = function(groupId, btn) {
+    ['gpr','ptr','seg','ftn'].forEach(g => {
+      document.getElementById('group-' + g).classList.toggle('hidden', g !== groupId);
+    });
+    setActiveTabUI(btn);
+  };
+
+  window.switchSubReg = function(regId, groupId, btn) {
+    document.querySelectorAll(`#${groupId}-content > .card`).forEach(c => c.classList.add('hidden'));
+    document.getElementById('reg-' + regId).classList.remove('hidden');
+    setActiveTabUI(btn);
+  };
+
+  /* --- BOOTSTRAP --- */
+  renderApp();
+
+</script>
+</body>
+</html>

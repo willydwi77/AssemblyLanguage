@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+<link rel="stylesheet" href="style.css" />
+<script src="app.js"></script>
+</head>
+<body class="antialiased">
+
+<div class="main-container">
+<!-- Header -->
+<div class="card bg-white mb-6">
+ <h1 class="page-title">Panduan Lanjutan: IAT, Loader & Rantai Eksekusi</h1>
+    <p class="page-subtitle">Mengungkap misteri bagaimana File EXE berkomunikasi dengan Windows DLL secara dinamis hingga ke level Kernel.</p>
+  
+ <div class="flex items-center gap-3 bg-slate-50 p-1.5 rounded-lg border border-slate-200 w-max shadow-inner">
+  <div class="text-sm font-bold text-slate-700 pl-2">Arsitektur Pointer:</div>
+  <button id="toggle-x64" onclick="setArch('x64')" class="px-4 py-1.5 text-sm font-semibold rounded transition-colors bg-blue-600 text-white shadow-sm">x64 (Pointer 8-Byte)</button>
+  <button id="toggle-x86" onclick="setArch('x86')" class="px-4 py-1.5 text-sm font-semibold rounded transition-colors bg-transparent text-slate-600 hover:bg-slate-200">x86 (Pointer 4-Byte)</button>
+ </div>
+</div>
+
+<!-- Main Tabs -->
+<div class="nav-group" id="mainTabs">
+ <button class="tab-btn active" onclick="switchMainGroup('pe', this)"> PE Format & Analogi</button>
+ <button class="tab-btn" onclick="switchMainGroup('eat', this)"> Mekanika EAT (Export)</button>
+ <button class="tab-btn" onclick="switchMainGroup('iat', this)"> Animasi Loader & IAT</button>
+ <button class="tab-btn border-emerald-300 text-emerald-700" onclick="switchMainGroup('exec', this)"> C++ & Peta Vertikal</button>
+</div>
+
+<!-- Content: PE FORMAT (IAT/EAT FOCUS) -->
+<div id="group-pe" class="card">
+ <h2 class="section-title">Mengapa Butuh IAT? (Analogi Buku Telepon)</h2>
+ <p class="content-desc">
+   Aplikasi Windows (EXE) sangat bergantung pada fungsi eksternal (seperti<code>MessageBox</code>) dari file<b>DLL</b>. Namun, karena alamat memori DLL selalu berubah-ubah di RAM (fitur keamanan ASLR), EXE tidak bisa "menghafal" alamat fungsi secara pasti (<i>Hardcoded</i>).
+ </p>
+
+ <div class="bg-blue-50 p-4 rounded-lg border border-blue-200 shadow-sm mb-6">
+  <h3 class="font-bold text-blue-900 mb-2"> Analogi "Buku Telepon & Sang Manajer"</h3>
+  <p class="text-xs mb-3 text-blue-800">
+    Bayangkan Anda menulis buku panduan masak (<b>App.exe</b>), lalu Anda menyuruh pembaca:<i>"Pesan kue dari Toko Roti"</i>. Sayangnya, Anda tidak tahu alamat Toko Roti hari ini karena bangunannya sering berpindah.
+  </p>
+  <ul class="text-sm list-disc pl-5 space-y-2 text-slate-700">
+   <li><b>INT (Import Name Table) - "Daftar Keinginan":</b>Anda menuliskan string nama jasa yang Anda butuhkan (misal: "Pesan Kue"). Daftar nama ini tertanam abadi di dalam file EXE Anda.</li>
+   <li><b>IAT (Import Address Table) - "Buku Telepon Kosong":</b>Anda menyediakan satu kotak kosong bersebelahan dengan daftar keinginan tadi.</li>
+   <li><b>Windows Loader (ntdll.dll) - "Sang Manajer OS":</b>Saat Anda menjalankan program, Sang Manajer akan masuk. Ia membaca daftar keinginan (INT), terbang ke Toko Roti sungguhan, lalu<b>menuliskan koordinat fisik toko tersebut menggunakan tinta merah ke dalam Buku Telepon Kosong (IAT)</b>milik Anda.</li>
+   <li>Kini, instruksi mesin Anda (di<code>.text</code>) tinggal berkata:<i>"Hai CPU, panggillah jasa yang alamatnya ada di Buku Telepon halaman 1!"</i></li>
+  </ul>
+ </div>
+
+ <div class="flex flex-col lg:flex-row gap-5 items-stretch">
+  <!-- PE Header Diagram -->
+  <div class="flex-1 bg-white border border-slate-300 rounded overflow-hidden shadow-sm flex flex-col font-mono text-[10px]">
+   <div class="bg-slate-800 text-slate-200 px-3 py-2 font-bold text-[12px] flex justify-between border-b border-slate-900">
+    <span>Struktur PE Header (Fokus Direktori)</span>
+    <span class="text-slate-400 font-normal">Aplikasi.exe</span>
+   </div>
+    
+   <div class="p-3 bg-slate-50 flex-1">
+    <!-- Data Directories -->
+    <div class="border border-indigo-200 bg-indigo-50 rounded mb-3">
+     <div class="bg-indigo-100 text-indigo-900 font-bold p-1.5 border-b border-indigo-200 text-center tracking-wider">OPTIONAL_HEADER ->DataDirectory</div>
+     <table class="w-full text-left">
+      <tr class="border-b border-indigo-100 group relative hover:bg-indigo-200 cursor-help transition-colors">
+       <td class="p-1.5 font-bold text-indigo-800">Index [0]: Export Directory</td>
+       <td class="p-1.5 text-slate-600">RVA: 0x0000 (Kosong)</td>
+       <div class="tooltip-box">EXE jarang mengekspor fungsi. Umumnya ini diisi oleh file .DLL.</div>
+      </tr>
+      <tr class="border-b border-indigo-100 group relative bg-amber-100 hover:bg-amber-200 cursor-help transition-colors">
+       <td class="p-1.5 font-bold text-amber-900">Index [1]: Import Directory</td>
+       <td class="p-1.5 text-amber-800 font-bold">RVA: 0x3000</td>
+       <div class="tooltip-box text-[10px]">Alamat menuju IMAGE_IMPORT_DESCRIPTOR.<br>Di sinilah OS mulai membaca "Daftar Keinginan" (INT).</div>
+      </tr>
+      <tr class="group relative hover:bg-indigo-200 cursor-help transition-colors">
+       <td class="p-1.5 font-bold text-indigo-800">Index [12]: IAT Directory</td>
+       <td class="p-1.5 text-blue-700 font-bold">RVA: 0x3100</td>
+       <div class="tooltip-box">Alamat fisik dari Import Address Table.<br>Di sinilah "Buku Telepon Kosong" berada!</div>
+      </tr>
+     </table>
+    </div>
+
+    <!-- Sections -->
+    <div class="border border-slate-300 bg-white rounded">
+     <div class="bg-slate-200 text-slate-700 font-bold p-1.5 border-b border-slate-300 text-center tracking-wider">SECTION HEADERS</div>
+     <table class="w-full text-left">
+      <tr class="border-b border-slate-100 group relative hover:bg-slate-100 cursor-help">
+       <td class="p-1.5 font-bold text-blue-700">.text (Code)</td>
+       <td class="p-1.5 italic text-slate-500">Berisi instruksi: CALL [IAT_Address]</td>
+       <div class="tooltip-box text-left">Instruksi<b>TIDAK</b>men-CALL alamat absolut fungsi,<br>melainkan membaca nilai pointer di dalam tabel IAT.</div>
+      </tr>
+      <tr class="border-b border-slate-100 group relative hover:bg-slate-100 cursor-help bg-blue-50">
+       <td class="p-1.5 font-bold text-amber-700">.idata / .rdata</td>
+       <td class="p-1.5 italic text-slate-600">Berisi INT (Nama) & IAT (Pointer)</td>
+       <div class="tooltip-box text-left">Rumah bagi Daftar Keinginan (INT) dan<br>Buku Telepon Kosong (IAT).</div>
+      </tr>
+     </table>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- Content: MEKANIKA EAT -->
+<div id="group-eat" class="hidden">
+ <div class="card">
+  <h2 class="section-title">Mekanika EAT (Export Address Table) di dalam DLL</h2>
+  <p class="text-sm text-slate-600 mb-4">
+    Jika IAT adalah "Daftar Permintaan", maka<b>EAT (Export)</b>adalah "Katalog Layanan" milik DLL. Agar Windows Loader bisa menjawab permintaan dari Aplikasi Anda, ia harus menelusuri katalog EAT milik<code>USER32.dll</code>secara dinamis menggunakan struktur rahasia berikut.
+  </p>
+
+  <div class="bg-white border-2 border-emerald-200 rounded-lg shadow-sm p-4 flex flex-col md:flex-row items-center gap-6">
+    
+   <!-- Logic Flow EAT -->
+   <div class="flex-1 w-full space-y-3 font-mono text-[11px]">
+    <div class="text-center font-bold text-slate-400 uppercase tracking-widest mb-4">Struktur EAT (IMAGE_EXPORT_DIRECTORY)</div>
+     
+    <div class="flex items-center gap-2">
+     <div class="bg-indigo-100 text-indigo-900 font-bold px-3 py-2 rounded flex-1 border border-indigo-300 shadow-sm">
+      <div class="text-[9px] text-indigo-500 uppercase">Array 1</div>
+       AddressOfNames<br>(Daftar String Nama)
+     </div>
+     <div class="text-indigo-400 font-bold"></div>
+     <div class="bg-white px-3 py-1 border border-slate-300 rounded flex-1">
+       [0] "CreateWindowEx"<br>
+      <span class="bg-yellow-100 text-yellow-800 px-1 rounded font-bold">[1] "MessageBoxA"</span><br>
+       [2] "MessageBoxW"
+     </div>
+    </div>
+
+    <div class="flex justify-center text-slate-400 italic text-[10px]">Windows Loader melakukan Binary Search untuk string "MessageBoxA". Ketemu di Index 1!</div>
+
+    <div class="flex items-center gap-2">
+     <div class="bg-amber-100 text-amber-900 font-bold px-3 py-2 rounded flex-1 border border-amber-300 shadow-sm">
+      <div class="text-[9px] text-amber-600 uppercase">Array 2</div>
+       AddressOfNameOrdinals<br>(Peta Penghubung)
+     </div>
+     <div class="text-amber-400 font-bold"></div>
+     <div class="bg-white px-3 py-1 border border-slate-300 rounded flex-1">
+       [0] Ordinal 0<br>
+      <span class="bg-yellow-100 text-yellow-800 px-1 rounded font-bold">[1] Ordinal 5</span><i>(Lookup ID)</i><br>
+       [2] Ordinal 6
+     </div>
+    </div>
+
+    <div class="flex justify-center text-slate-400 italic text-[10px]">Index 1 menunjuk ke Ordinal ID bernilai 5. Lanjut ke Array Fungsi!</div>
+
+    <div class="flex items-center gap-2">
+     <div class="bg-emerald-100 text-emerald-900 font-bold px-3 py-2 rounded flex-1 border border-emerald-300 shadow-sm">
+      <div class="text-[9px] text-emerald-600 uppercase">Array 3</div>
+       AddressOfFunctions<br>(Alamat Asli / RVA)
+     </div>
+     <div class="text-emerald-400 font-bold"></div>
+     <div class="bg-white px-3 py-1 border border-slate-300 rounded flex-1">
+       ...<br>
+      <span class="bg-emerald-200 text-emerald-900 px-1 rounded font-bold">[5] RVA: 0xA1200</span><br>
+       ...
+     </div>
+    </div>
+
+   </div>
+
+   <!-- Result Card -->
+   <div class="w-full md:w-1/3 bg-slate-800 text-white p-4 rounded shadow-lg border border-slate-700 flex flex-col justify-center text-center">
+    <div class="text-3xl mb-2"></div>
+    <h3 class="font-bold text-sm mb-1 text-emerald-400">Pencarian Selesai!</h3>
+    <p class="text-[11px] text-slate-300 mb-3">OS sukses menerjemahkan nama fungsi menjadi RVA Offset<code>0xA1200</code>dari titik awal DLL dimuat.</p>
+    <div class="bg-slate-900 border border-slate-600 p-2 rounded text-[10px] font-mono mt-auto">
+     <span class="text-slate-500">Kalkulasi Akhir:</span><br>
+     <span class="text-blue-400">DLL ImageBase</span>+<span class="text-emerald-400">RVA</span><br>
+     <span class="font-bold text-white mt-1 block">0x77000000 + 0xA1200<br>=<span class="text-yellow-400">0x770A1200</span></span>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- Content: IAT ANIMATION -->
+<div id="group-iat" class="hidden">
+ <div class="card border-blue-300 shadow-md">
+  <h2 class="section-title">Animasi Runtime: OS Loader Menulis IAT</h2>
+  <p class="text-sm text-slate-600 mb-4 arch-desc-iat"></p>
+   
+  <div class="border border-slate-300 rounded-lg bg-slate-50 overflow-hidden shadow-sm">
+   <div class="bg-slate-800 border-b border-slate-900 px-3 py-2 flex justify-between items-center text-white text-[13px] font-bold">
+    <div> Sistem Runtime Windows (ntdll.dll)</div>
+    <div class="text-[10px] text-slate-300 font-normal border border-slate-600 px-2 rounded" id="iat-arch-badge">Mode</div>
+   </div>
+    
+   <div class="flex flex-col lg:flex-row items-stretch min-h-[400px]">
+    <!-- LEFT: Narasi & Action Logs -->
+    <div class="flex-[1.2] flex flex-col bg-white border-r border-slate-300">
+     <div class="bg-slate-100 text-slate-600 text-[10px] font-bold text-center py-1 border-b border-slate-200 uppercase tracking-wider">Aktivitas Pemrosesan OS</div>
+     <div class="bg-slate-900 text-slate-300 p-2 overflow-y-auto font-mono text-[11px] h-[220px]" id="anim-logs-iat"></div>
+     <div class="flex-1 bg-indigo-50 border-t border-indigo-200 p-3 flex flex-col justify-center min-h-[100px]">
+      <div class="text-[10px] font-bold text-indigo-400 mb-1 uppercase tracking-wider">Penjelasan Teknis</div>
+      <div class="text-[11px] text-indigo-900 leading-relaxed font-semibold" id="anim-desc-iat">Menunggu inisiasi animasi...</div>
+     </div>
+    </div>
+     
+    <!-- RIGHT: Visual Memory Maps -->
+    <div class="flex-[1.5] flex flex-col bg-slate-100 p-3 relative overflow-hidden">
+     <!-- EXE Memory Block -->
+     <div class="border border-blue-300 bg-white rounded shadow-sm flex flex-col flex-1 mb-2 min-h-[120px]">
+      <div class="bg-blue-100 border-b border-blue-200 px-2 py-1 text-[10px] font-bold text-blue-900 flex justify-between">
+       <span> Ruang Memori: App.exe</span>
+       <span class="text-blue-600 font-mono arch-exe-base"></span>
+      </div>
+      <div class="p-2 flex-1 flex flex-col gap-2 justify-center" id="anim-exe-mem"></div>
+     </div>
+     <!-- Bridge -->
+     <div class="py-1 flex justify-center items-center font-bold text-slate-400 text-[10px] tracking-widest relative z-10" id="anim-loader-bridge">
+       (OS MEMORY MANAGER)
+     </div>
+     <!-- DLL Memory Block -->
+     <div class="border border-emerald-300 bg-white rounded shadow-sm flex flex-col flex-1 mt-1 opacity-40 transition-opacity duration-500 min-h-[120px]" id="dll-mem-block">
+      <div class="bg-emerald-100 border-b border-emerald-200 px-2 py-1 text-[10px] font-bold text-emerald-900 flex justify-between">
+       <span> Ruang Memori: USER32.dll</span>
+       <span class="text-emerald-600 font-mono arch-dll-base"></span>
+      </div>
+      <div class="p-2 flex-1 flex flex-col gap-2 justify-center" id="anim-dll-mem"></div>
+     </div>
+    </div>
+   </div>
+    
+   <div class="bg-slate-200 border-t border-slate-300 px-3 py-2 flex gap-2">
+     <button onclick="stepAnim('iat')" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded shadow transition-colors flex items-center gap-2 uppercase tracking-wide">Jalankan Loader<span>⏭️</span></button>
+     <button onclick="resetAnim('iat')" class="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded shadow-sm transition-colors uppercase">Reset</button>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- Content: C++ & EXECUTION VERTICAL MEMORY -->
+<div id="group-exec" class="hidden">
+ <div class="card border-emerald-200 shadow-md bg-emerald-50/20">
+  <h2 class="section-title">Translasi C++ & Peta RAM Vertikal (High to Low)</h2>
+  <p class="content-desc">
+    Bagaimana kode C++ yang simpel terhubung hingga ke<b>Kernel Windows</b>? Peta memori disusun secara vertikal dari alamat tinggi (Kernel/OS) ke alamat rendah (Aplikasi). Kita akan menelusuri eksekusi instruksi<code>MessageBoxW</code>dari awal hingga menembus batas OS melalui<i>SYSCALL</i>.
+  </p>
+
+  <div class="flex flex-col lg:flex-row gap-5">
+   <!-- LEFT: C++ and ASM Code -->
+   <div class="flex-[1.2] flex flex-col gap-4">
+    <!-- C++ -->
+    <div class="border border-slate-300 rounded overflow-hidden shadow-sm bg-white">
+     <div class="bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600 border-b border-slate-300"> Source Code C++ (Win32 GUI)</div>
+     <pre class="code-block" style="font-size: 11px;"><code class="text-blue-800">#include &lt;windows.h&gt;
+
+int main() {
+ <span class="font-bold text-emerald-700 bg-emerald-100 px-1 rounded">// Memanggil fungsi GUI Windows</span>
+  MessageBoxW(NULL, L"Hello", L"GUI", MB_OK);
+  return 0;
+}</code></pre>
+    </div>
+
+    <!-- ASM -->
+    <div class="border border-slate-700 rounded overflow-hidden shadow-sm bg-slate-900">
+     <div class="bg-slate-800 px-3 py-1.5 text-[11px] font-bold text-slate-300 border-b border-slate-700">️ Compiled Assembly (x64 ABI)</div>
+     <pre class="code-block dark" style="font-size: 11px;"><code><span class="text-slate-400">; Persiapan 4 Argumen via Register (x64 Calling Convention)</span>
+mov r9d, 0          <span class="text-slate-500">; Arg 4: MB_OK</span>
+lea r8, [str_GUI]      <span class="text-slate-500">; Arg 3: L"GUI"</span>
+lea rdx, [str_Hello]     <span class="text-slate-500">; Arg 2: L"Hello"</span>
+xor ecx, ecx         <span class="text-slate-500">; Arg 1: NULL (0)</span>
+
+<span class="text-amber-400 font-bold">call qword ptr [__imp_MessageBoxW]</span><span class="text-emerald-400">; BACA IAT!</span></code></pre>
+    </div>
+
+    <!-- Info Box -->
+    <div class="bg-white border border-emerald-200 p-3 rounded text-xs text-slate-700 shadow-sm leading-relaxed">
+     <b>Hierarki Eksekusi Windows:</b>Aplikasi Anda di *Ring 3* tidak punya hak akses untuk menggambar UI di layar perangkat keras. Ia harus memohon kepada Kernel (*Ring 0*).<br><br>
+      Rantai Panggilan:<br>
+     <code class="bg-slate-100 px-1 py-0.5 rounded text-blue-700">App.exe</code><code class="bg-slate-100 px-1 py-0.5 rounded text-emerald-700">USER32.dll</code><code class="bg-slate-100 px-1 py-0.5 rounded text-amber-700">win32u/ntdll.dll</code><b>[SYSCALL]</b><code class="bg-slate-100 px-1 py-0.5 rounded text-red-600">win32k.sys (Kernel)</code>
+    </div>
+   </div>
+
+   <!-- RIGHT: Vertical Memory Map -->
+   <div class="flex-[1.5] border border-slate-300 bg-slate-50 rounded-lg p-3 shadow-inner flex flex-col justify-between relative min-h-[450px]">
+    <div class="text-[10px] text-center font-bold text-slate-400 mb-2 uppercase tracking-widest border-b border-slate-200 pb-1">Alamat Tinggi (High Address)</div>
+     
+    <div class="flex-1 flex flex-col justify-center gap-1.5" id="v-mem-container">
+     <!-- Populated dynamically via JS -->
+    </div>
+
+    <div class="text-[10px] text-center font-bold text-slate-400 mt-2 uppercase tracking-widest border-t border-slate-200 pt-1">Alamat Rendah (Low Address)</div>
+     
+    <!-- Control -->
+    <div class="absolute bottom-4 right-4 bg-white p-2 rounded shadow border border-slate-300 flex items-center gap-2">
+     <button onclick="stepExecAnim()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded shadow transition-colors flex items-center gap-1 uppercase">Lacak Eksekusi<span>▶</span></button>
+    </div>
+   </div>
+  </div>
+   
+  <!-- Execution Description -->
+  <div class="mt-4 bg-emerald-100 border border-emerald-300 rounded p-3 text-emerald-900 text-sm font-semibold shadow-sm" id="v-mem-desc">
+    Tekan "Lacak Eksekusi" untuk melihat pergerakan Instruction Pointer (RIP).
+  </div>
+ </div>
+</div>
+</div>
+
+<script>
+  let animStates = { iat: { step: 0 }, exec: { step: 0 } };
+
+ const txtData = {
+  descIat: {
+   x64: "Simulasi<b>x64</b>: Pointer dan alamat memori berukuran 8 byte (QWORD). Instruksi mesin memanggil target IAT menggunakan gaya pengalamatan dinamis<i>RIP-relative addressing</i>.",
+   x86: "Simulasi<b>x86</b>: Pointer dan alamat memori berukuran 4 byte (DWORD). Instruksi mesin memanggil target IAT secara absolut."
+  },
+  badge: {
+   x64: "Mode: 64-bit (QWORD/8-Byte)",
+   x86: "Mode: 32-bit (DWORD/4-Byte)"
+  },
+  exeBase: { x64: "ImageBase: 0x140000000", x86: "ImageBase: 0x00400000" },
+  dllBase: { x64: "ImageBase: 0x00007FFB12340000", x86: "ImageBase: 0x77000000" }
+ };
+
+ const animData = {
+  iat: {
+   x86: {
+    logs: [
+     "[KERNEL] Menyiapkan proses App.exe...",
+     "[LOADER] Membaca INT (Daftar Keinginan)...",
+     "[LOADER] Ditemukan Permintaan Fungsi: USER32.dll",
+     "[LOADER] Memetakan USER32.dll ke Memori (0x77000000)",
+     "[LOADER] Mencari 'MessageBoxA' di EAT USER32.dll...",
+     "[LOADER] Resolusi RVA berhasil (0xA1200).",
+     "[LOADER] Kalkulasi: 0x77000000 + 0xA1200 = 0x770A1200",
+     "[LOADER] Menimpa IAT App.exe (Alamat 0x00403000) dengan 0x770A1200",
+     "[KERNEL] OS Selesai! Menjalankan App.exe...",
+     "[CPU] EIP mencapai instruksi: CALL DWORD PTR [0x00403000]",
+     "[CPU] Melompat ke USER32.dll!"
+    ],
+    steps: [
+     { l: 0, exeMem: [ {a: "0x00401050 (.text)", v: "call DWORD PTR [0x00403000]", hl: false}, {a: "0x00403000 (.idata/IAT)", v: "(Buku Kosong - INT: 'MessageBox')", hl: false} ], dllOpaq: 0.3, dllMem: [ {a: "0x770A1200 (.text)", v: "(TIDAK TERLIHAT)", hl: false} ], desc: "Program diluncurkan. Bagian IAT masih 'Kosong', ia hanya menyimpan referensi ke INT (Daftar nama string 'MessageBoxA'). OS Loader bersiap bekerja." },
+     { l: 3, exeMem: [ {a: "0x00401050 (.text)", v: "call DWORD PTR [0x00403000]", hl: false}, {a: "0x00403000 (.idata/IAT)", v: "(Buku Kosong - INT: 'MessageBox')", hl: false} ], dllOpaq: 1, dllMem: [ {a: "0x770A1200 (.text)", v: "mov edi, edi; push ebp...", hl: false} ], desc: "Windows Loader merespons daftar permintaan. Ia mencari<code>USER32.dll</code>di sistem Windows dan memetakannya ke dalam RAM (di alamat 0x77000000)." },
+     { l: 6, exeMem: [ {a: "0x00401050 (.text)", v: "call DWORD PTR [0x00403000]", hl: false}, {a: "0x00403000 (.idata/IAT)", v: "(Buku Kosong - INT: 'MessageBox')", hl: false} ], dllOpaq: 1, dllMem: [ {a: "0x770A1200 (.text)", v: "mov edi, edi; push ebp...", hl: true} ], desc: "Loader menelusuri katalog (EAT) milik DLL dan berhasil menemukan lokasi fisik kode MessageBoxA berada tepat di<code>0x770A1200</code>." },
+     { l: 7, exeMem: [ {a: "0x00401050 (.text)", v: "call DWORD PTR [0x00403000]", hl: false}, {a: "0x00403000 (.idata/IAT)", v: "0x770A1200 (Alamat Asli!)", hl: true} ], dllOpaq: 1, dllMem: [ {a: "0x770A1200 (.text)", v: "mov edi, edi; push ebp...", hl: false} ], desc: "<b>PATCHING IAT!</b>Sang Manajer OS menimpa kotak IAT (<code>0x00403000</code>) yang asalnya referensi kosong, menjadi alamat memori sesungguhnya (<code>0x770A1200</code>). IAT kini matang!" },
+     { l: 9, exeMem: [ {a: "0x00401050 (.text)", v: "call DWORD PTR [0x00403000]", hl: true}, {a: "0x00403000 (.idata/IAT)", v: "0x770A1200", hl: false} ], dllOpaq: 1, dllMem: [ {a: "0x770A1200 (.text)", v: "mov edi, edi; push ebp...", hl: false} ], desc: "Sang Manajer OS selesai dan menyerahkan kendali kepada CPU. CPU mengeksekusi<code>CALL DWORD PTR [...]</code>, yang menyuruhnya melihat isi IAT dan melompat ke alamat yang tertulis di situ." },
+     { l: 10, exeMem: [ {a: "0x00401050 (.text)", v: "call DWORD PTR [0x00403000]", hl: false}, {a: "0x00403000 (.idata/IAT)", v: "0x770A1200", hl: true} ], dllOpaq: 1, dllMem: [ {a: "0x770A1200 (.text)", v: "mov edi, edi; push ebp...", hl: true} ], desc: "EIP melompat mulus keluar dari EXE dan masuk ke memori USER32.dll. Pemanggilan fungsi DLL secara dinamis sukses dilakukan!" }
+    ]
+   },
+   x64: {
+    logs: [
+     "[KERNEL] Menyiapkan proses App.exe (64-bit)...",
+     "[LOADER] Membaca INT (Daftar Keinginan)...",
+     "[LOADER] Ditemukan Permintaan Fungsi: USER32.dll",
+     "[LOADER] Memetakan USER32.dll ke Memori (0x00007FFB12340000)",
+     "[LOADER] Mencari 'MessageBoxA' di EAT USER32.dll...",
+     "[LOADER] Resolusi RVA berhasil (0xA1200).",
+     "[LOADER] Kalkulasi: 0x00007FFB... + 0xA1200 = 0x00007FFB123E1200",
+     "[LOADER] Menimpa IAT App.exe (Alamat 0x140003000)",
+     "[KERNEL] OS Selesai! Menjalankan App.exe...",
+     "[CPU] RIP mencapai instruksi: CALL QWORD PTR [RIP + 0x1FA9]",
+     "[CPU] Melompat ke USER32.dll!"
+    ],
+    steps: [
+     { l: 0, exeMem: [ {a: "0x140001050 (.text)", v: "call QWORD PTR [rip+0x1fa9]", hl: false}, {a: "0x140003000 (.idata/IAT)", v: "(Buku Kosong - INT: 'MessageBox')", hl: false} ], dllOpaq: 0.3, dllMem: [ {a: "0x7FFB123E1200 (.text)", v: "(TIDAK TERLIHAT)", hl: false} ], desc: "Perhatikan instruksi<code>CALL</code>64-bit ini. Ia tidak memuat alamat kotak secara absolut, melainkan<b>RIP-relative addressing</b><code>[rip+0x1fa9]</code>, yang merupakan aljabar otomatis menuju kotak IAT<code>0x140003000</code>." },
+     { l: 3, exeMem: [ {a: "0x140001050 (.text)", v: "call QWORD PTR [rip+0x1fa9]", hl: false}, {a: "0x140003000 (.idata/IAT)", v: "(Buku Kosong - INT: 'MessageBox')", hl: false} ], dllOpaq: 1, dllMem: [ {a: "0x7FFB123E1200 (.text)", v: "sub rsp, 0x38; mov... ", hl: false} ], desc: "Windows Loader memetakan<code>USER32.dll</code>ke dalam RAM dengan ruang lingkup alamat 64-bit yang sangat raksasa (0x00007FFB...)." },
+     { l: 6, exeMem: [ {a: "0x140001050 (.text)", v: "call QWORD PTR [rip+0x1fa9]", hl: false}, {a: "0x140003000 (.idata/IAT)", v: "(Buku Kosong - INT: 'MessageBox')", hl: false} ], dllOpaq: 1, dllMem: [ {a: "0x7FFB123E1200 (.text)", v: "sub rsp, 0x38; mov... ", hl: true} ], desc: "Loader menganalisa EAT milik DLL dan menemukan offset (RVA) dari fungsi yang dicari." },
+     { l: 7, exeMem: [ {a: "0x140001050 (.text)", v: "call QWORD PTR [rip+0x1fa9]", hl: false}, {a: "0x140003000 (.idata/IAT)", v: "0x00007FFB123E1200 (Asli!)", hl: true} ], dllOpaq: 1, dllMem: [ {a: "0x7FFB123E1200 (.text)", v: "sub rsp, 0x38; mov... ", hl: false} ], desc: "<b>PATCHING IAT (64-BIT)!</b>Loader menimpa kotak IAT dengan memori pointer raksasa berukuran 8-Byte (QWORD). Buku tamu ini selesai dikerjakan!" },
+     { l: 9, exeMem: [ {a: "0x140001050 (.text)", v: "call QWORD PTR [rip+0x1fa9]", hl: true}, {a: "0x140003000 (.idata/IAT)", v: "0x00007FFB123E1200", hl: false} ], dllOpaq: 1, dllMem: [ {a: "0x7FFB123E1200 (.text)", v: "sub rsp, 0x38; mov... ", hl: false} ], desc: "CPU mengeksekusi instruksi. Kalkulasi aritmatika<code>RIP + 0x1FA9</code>menunjuk tepat ke IAT. CPU mengekstrak alamat tersebut (Pointer Dereference)." },
+     { l: 10, exeMem: [ {a: "0x140001050 (.text)", v: "call QWORD PTR [rip+0x1fa9]", hl: false}, {a: "0x140003000 (.idata/IAT)", v: "0x00007FFB123E1200", hl: true} ], dllOpaq: 1, dllMem: [ {a: "0x7FFB123E1200 (.text)", v: "sub rsp, 0x38; mov... ", hl: true} ], desc: "RIP lompat dengan aman ke ruang memori DLL Windows. Demikianlah arsitektur modern beroperasi!" }
+    ]
+   }
+  }
+ };
+
+ // --- VERTICAL EXECUTION MAP DATA ---
+ const vMapData = [
+  { id: 'v-kernel', color: 'bg-red-900 text-white border-red-900', addr: '0xFFFFF800... (Ring 0)', name: 'KERNEL SPACE (win32k.sys)' },
+  { id: 'v-ntdll', color: 'bg-amber-100 text-amber-900 border-amber-300', addr: '0x7FFC0000... (Ring 3)', name: 'Native API (win32u.dll / ntdll.dll)' },
+  { id: 'v-user32', color: 'bg-emerald-100 text-emerald-900 border-emerald-300', addr: '0x7FFB1234... (Ring 3)', name: 'Windows API (USER32.dll)' },
+  { id: 'v-iat', color: 'bg-blue-200 text-blue-900 border-blue-400', addr: '0x140003000', name: 'App.exe .idata (IAT)' },
+  { id: 'v-data', color: 'bg-slate-200 text-slate-700 border-slate-300', addr: '0x140002000', name: 'App.exe .data' },
+  { id: 'v-text', color: 'bg-blue-100 text-blue-800 border-blue-300', addr: '0x140001000', name: 'App.exe .text (Source Code)' },
+  { id: 'v-base', color: 'bg-slate-300 text-slate-700 border-slate-400', addr: '0x140000000', name: 'App.exe ImageBase (Header)' }
+ ];
+
+ const vAnimSteps = [
+  { target: '', desc: "Tekan 'Lacak Eksekusi' untuk memulai simulasi pergerakan Pointer RIP (Instruction Pointer)." },
+  { target: 'v-text', desc: "<b>Langkah 1:</b>CPU (RIP) berada di<code>.text</code>mengeksekusi instruksi<code>call qword ptr [__imp_MessageBoxW]</code>." },
+  { target: 'v-iat', desc: "<b>Langkah 2:</b>Dereferensi Pointer! CPU tidak langsung melompat, melainkan melirik tabel IAT di<code>0x140003000</code>dan mengekstrak alamat tujuan (0x7FFB...)." },
+  { target: 'v-user32', desc: "<b>Langkah 3:</b>RIP melompat ke<code>USER32.dll</code>. Logika GUI diproses di sini, menyiapkan parameter jendela." },
+  { target: 'v-ntdll', desc: "<b>Langkah 4:</b><code>USER32.dll</code>tidak punya hak menggambar di layar. Ia memanggil<i>Native API</i>(<code>win32u.dll / ntdll.dll</code>) untuk bersiap menyeberang ke OS." },
+  { target: 'v-kernel', desc: "<b>Langkah 5 (FINAL):</b><code>ntdll/win32u</code>mengeksekusi instruksi dewa<code>SYSCALL</code>. Kendali User-Mode (Ring 3) diserahkan ke Kernel OS (Ring 0). Jendela berhasil digambar di monitor Anda!" }
+ ];
+
+ function renderVerticalMap() {
+  let html = vMapData.map(block =>`
+  <div id="${block.id}" class="v-mem-block ${block.color}">
+   <span class="v-mem-addr">${block.addr}</span>
+   <span class="v-mem-name">${block.name}</span>
+  </div>
+  `).join('');
+  document.getElementById('v-mem-container').innerHTML = html;
+ }
+
+ window.stepExecAnim = function() {
+  animStates.exec.step = (animStates.exec.step + 1) % vAnimSteps.length;
+  let stepInfo = vAnimSteps[animStates.exec.step];
+  
+  // Reset all highlights
+  vMapData.forEach(b =>{
+   document.getElementById(b.id).classList.remove('active');
+  });
+
+  // Highlight target
+  if(stepInfo.target) {
+   document.getElementById(stepInfo.target).classList.add('active');
+  }
+
+  // Update text
+  document.getElementById('v-mem-desc').innerHTML = stepInfo.desc;
+ };
+
+ 
+ function renderMemSlots(slotsHtmlContainer, slotsArray, isReadMode) {
+  let html = slotsArray.map(s =>{
+   let hlClass = '';
+   if(s.hl && !isReadMode) hlClass = 'hl-write';
+   if(s.hl && isReadMode) hlClass = 'hl-read';
+   
+   return `
+  <div class="mem-slot ${hlClass}">
+   <div class="mem-addr">${s.a}</div>
+   <div class="mem-val">
+    <span>${s.v}</span>
+   </div>
+  </div>`;
+  }).join('');
+  document.getElementById(slotsHtmlContainer).innerHTML = html;
+ }
+
+ function updateAnimUI(id, stepIdx) {
+  const data = animData[id][currentArch];
+  const step = data.steps[stepIdx];
+  
+  let logsHtml = data.logs.map((line, i) =>{
+   let isVisible = (i<= step.l);
+   let isCurrent = (i === step.l);
+   if(!isVisible) return '';
+   return `<div class="anim-line ${isCurrent ? 'active' : ''}">${isCurrent ? `<span class="flow-arrow">▶</span>`: ` `}${line}</div>`;
+  }).join('');
+  const logContainer = document.getElementById(`anim-logs-iat`);
+  logContainer.innerHTML = logsHtml;
+  setTimeout(() =>{ logContainer.scrollTop = logContainer.scrollHeight; }, 10);
+  
+  document.getElementById('dll-mem-block').style.opacity = step.dllOpaq;
+  
+  let isReadMode = stepIdx >= 4;
+
+  renderMemSlots('anim-exe-mem', step.exeMem, isReadMode);
+  renderMemSlots('anim-dll-mem', step.dllMem, isReadMode);
+  
+  document.getElementById(`anim-desc-iat`).innerHTML = step.desc;
+
+  let bridge = document.getElementById('anim-loader-bridge');
+  if (stepIdx === 3) {
+   bridge.innerHTML = `⬇ MENIMPA POINTER (PATCHING) ⬇`;
+   bridge.style.color = '#d97706';
+  } else if (stepIdx >= 4) {
+   bridge.innerHTML = `⬇ CPU LOMPAT EKSKUSI ⬇`;
+   bridge.style.color = '#2563eb';
+  } else {
+   bridge.innerHTML = `(OS MEMORY MANAGER)`;
+   bridge.style.color = '#94a3b8';
+  }
+ }
+
+ window.stepAnim = function(id) {
+  const data = animData[id][currentArch];
+  animStates[id].step = (animStates[id].step + 1) % data.steps.length;
+  updateAnimUI(id, animStates[id].step);
+ };
+ 
+ window.resetAnim = function(id) {
+  animStates[id].step = 0;
+  updateAnimUI(id, 0);
+ };
+
+ window.switchMainGroup = function(groupId, btn) {
+  ['pe','eat','iat','exec'].forEach(g =>{
+   document.getElementById('group-' + g).classList.toggle('hidden', g !== groupId);
+  });
+  document.querySelectorAll('#mainTabs .tab-btn').forEach(b =>b.classList.remove('active'));
+  btn.classList.add('active');
+ };
+
+ // Init
+ setArch('x64');
+</script>
+</body>
+</html>

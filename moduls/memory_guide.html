@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+<link rel="stylesheet" href="style.css" />
+<script src="app.js"></script>
+</head>
+<body class="antialiased">
+
+<div class="main-container">
+<!-- Header -->
+<div class="card bg-white mb-6">
+ <h1 class="page-title">Panduan Memori: Stack vs Heap</h1>
+    <p class="page-subtitle">Mengungkap operasional RAM, Pointer Offset, dan Manajemen Alokasi Memori.</p>
+  
+ <!-- Architecture Toggle -->
+ <div class="flex items-center gap-3 bg-slate-50 p-1.5 rounded-lg border border-slate-200 w-max shadow-inner">
+  <div class="text-sm font-bold text-slate-700 pl-2">Arsitektur (Konteks):</div>
+  <button id="toggle-x64" onclick="setArch('x64')" class="px-4 py-1.5 text-sm font-semibold rounded transition-colors bg-blue-600 text-white shadow-sm">x64 (64-bit)</button>
+  <button id="toggle-x86" onclick="setArch('x86')" class="px-4 py-1.5 text-sm font-semibold rounded transition-colors bg-transparent text-slate-600 hover:bg-slate-200">x86 (32-bit)</button>
+ </div>
+</div>
+
+<!-- Main Tabs -->
+<div class="nav-group" id="mainTabs">
+ <button class="tab-btn active" onclick="switchMainGroup('dasar', this)"> Peta RAM OS</button>
+ <button class="tab-btn" onclick="switchMainGroup('stack', this)"> Stack & Pointer Offset</button>
+ <button class="tab-btn" onclick="switchMainGroup('heap', this)"> Heap & Pointer Dinamis</button>
+</div>
+
+<!-- Content: DASAR -->
+<div id="group-dasar" class="card">
+  
+ <h2 class="section-title">Siklus Hidup Memori: Pemetaan dari RAW File ke Hardware</h2>
+ <p class="content-desc">
+   Sistem Operasi memetakan data mentah dari struktur<b>PE Format</b>menjadi<b>Virtual Memory</b>saat<i>runtime</i>menggunakan kalkulasi *Offset*. Berikut adalah pembedahan detail mengenai transisi alamat-alamat tersebut.
+ </p>
+
+ <!-- ANATOMI PE FORMAT -->
+ <div class="mb-6 border border-slate-300 rounded-lg bg-white overflow-hidden shadow-sm">
+  <div class="bg-slate-100 border-b border-slate-300 px-3 py-2 font-bold text-slate-700 text-sm flex justify-between">
+   <span> Anatomi PE Format (Portable Executable)</span>
+  </div>
+  <div class="p-4 flex flex-col md:flex-row gap-5 items-stretch">
+    
+   <!-- Table Diagram PE -->
+   <div class="flex-1 min-w-[320px]">
+     <div class="flex flex-col text-[10px] font-mono border border-slate-400 bg-white shadow-sm rounded overflow-hidden">
+      <div class="bg-indigo-100 text-indigo-900 p-2 border-b border-slate-400">
+       <div class="font-bold text-center mb-1 border-b border-indigo-200 pb-1 uppercase tracking-wider text-[11px]">Header Information</div>
+       <div class="flex justify-between mt-1"><span>ImageBase:</span><span class="font-bold text-blue-700 bg-white px-1 rounded border border-blue-200">0x00400000</span></div>
+       <div class="flex justify-between mt-1"><span>AddressOfEntryPoint:</span><span class="font-bold text-blue-700 bg-white px-1 rounded border border-blue-200">0x1000 (RVA)</span></div>
+      </div>
+      <div class="bg-amber-50 p-2 text-slate-800">
+       <div class="font-bold text-center mb-2 text-amber-800 uppercase tracking-wider text-[11px] border-b border-amber-200 pb-1">Section Headers Table</div>
+       <table class="w-full text-right border-collapse">
+        <thead>
+         <tr class="text-amber-700 border-b border-amber-200">
+          <th class="text-left font-bold pb-1">Section</th>
+          <th class="pb-1 text-slate-600" title="Alamat di dalam File Hard Disk">Raw Addr</th>
+          <th class="pb-1 text-slate-600" title="Ukuran di dalam File Hard Disk">Raw Size</th>
+          <th class="pb-1 text-blue-700" title="Alamat Virtual Relatif di RAM">RVA</th>
+          <th class="pb-1 text-blue-700" title="Ukuran yang diminta di RAM">Virt Size</th>
+         </tr>
+        </thead>
+        <tbody class="leading-relaxed">
+         <tr class="border-b border-amber-100"><td class="text-left font-bold text-blue-700">.text</td><td class="text-slate-600">0x400</td><td class="text-slate-600">0x600</td><td class="text-blue-700 font-bold">0x1000</td><td class="text-blue-700">0x5A0</td></tr>
+         <tr class="border-b border-amber-100"><td class="text-left font-bold text-emerald-700">.rdata</td><td class="text-slate-600">0xA00</td><td class="text-slate-600">0x200</td><td class="text-blue-700 font-bold">0x2000</td><td class="text-blue-700">0x140</td></tr>
+         <tr class="border-b border-amber-100"><td class="text-left font-bold text-amber-700">.data</td><td class="text-slate-600">0xC00</td><td class="text-slate-600">0x200</td><td class="text-blue-700 font-bold">0x3000</td><td class="text-blue-700">0x100</td></tr>
+         <tr class="border-b border-amber-100 bg-slate-100"><td class="text-left font-bold text-slate-600">.bss</td><td class="text-rose-500 font-bold">0x0</td><td class="text-rose-500 font-bold">0x0</td><td class="text-blue-700 font-bold">0x4000</td><td class="text-blue-700 font-bold">0x2000</td></tr>
+         <tr class="border-b border-amber-100"><td class="text-left font-bold text-purple-700">.rsrc</td><td class="text-slate-600">0xE00</td><td class="text-slate-600">0x400</td><td class="text-blue-700 font-bold">0x6000</td><td class="text-blue-700">0x350</td></tr>
+         <tr><td class="text-left font-bold text-pink-700">.reloc</td><td class="text-slate-600">0x1200</td><td class="text-slate-600">0x200</td><td class="text-blue-700 font-bold">0x7000</td><td class="text-blue-700">0x180</td></tr>
+        </tbody>
+       </table>
+      </div>
+     </div>
+   </div>
+    
+   <!-- Penjelasan Offset & Size -->
+   <div class="flex-[1.5] text-xs text-slate-700 space-y-3 flex flex-col justify-center">
+     <div class="bg-indigo-50 p-3 rounded border-l-4 border-indigo-500 shadow-sm">
+      <strong class="text-indigo-800 block mb-1 text-[13px]"> Kalkulasi Virtual Address (VA Absolute)</strong>
+      <p class="mb-1">OS memetakan Raw Address dari disk ke lokasi virtual baru menggunakan<b>RVA (Relative Virtual Address)</b>. Rumusnya:</p>
+      <code class="bg-white px-2 py-1 rounded text-indigo-900 border border-indigo-200 block text-center font-bold text-[11px] shadow-inner mt-2 mb-2">VA = ImageBase + RVA</code>
+      <p>Contoh pada instruksi<code class="font-bold text-blue-700">.text</code>:<code>0x00400000 + 0x1000 =<span class="font-bold text-indigo-700">0x00401000</span></code>. Inilah alamat yang akan dilihat oleh debugger (Dynamic Analysis)!</p>
+     </div>
+     <div class="bg-amber-50 p-3 rounded border-l-4 border-amber-500 shadow-sm">
+      <strong class="text-amber-800 block mb-1 text-[13px]"> Misteri Padding (Virt Size &gt; Raw Size)</strong>
+      <p>Ukuran di disk (<i>Raw Size</i>) seringkali lebih kecil dari memori yang dialokasikan OS (<i>Virt Size</i>). Kasus ekstrem ada di<code class="font-bold text-slate-700">.bss</code>(Variabel global tanpa nilai awal).</p>
+      <p class="mt-1">Karena isinya hanya 0, kompilator menghemat ruang disk dengan memberikan<b>Raw Size = 0</b>. Saat runtime, OS akan mematuhi<b>Virt Size (0x2000)</b>dan mencetak ruang RAM kosong yang di-isi-nol (Zero Padding).</p>
+     </div>
+   </div>
+  </div>
+ </div>
+
+
+ <!-- 3 COLUMN VISUALIZATION -->
+ <div class="flex flex-col xl:flex-row gap-4 items-stretch">
+   
+  <!-- Column 1: Hard Disk (RAW PE File) -->
+  <div class="flex-1 flex flex-col items-stretch bg-slate-50 p-2 rounded-lg border border-slate-200">
+    <div class="font-bold text-slate-800 mb-2 text-xs text-center flex flex-col">
+     <span> 1. RAW File (.EXE)</span>
+     <span class="text-[9px] font-normal text-slate-500">(Fokus Analisis Statis)</span>
+    </div>
+     
+    <div class="flex-1 border border-slate-400 bg-white shadow-sm text-[9px] font-mono flex flex-col">
+      
+     <div class="bg-blue-100 p-2 border-b border-slate-400 flex flex-col justify-center h-16">
+      <div class="font-bold text-center text-blue-900 mb-1">.text (Instruksi Mesin)</div>
+      <div class="flex justify-between text-[8px] px-2"><span class="text-slate-600">RAW Addr: 0x400</span><span class="text-slate-600">Raw Size: 0x600</span></div>
+     </div>
+      
+     <div class="bg-emerald-100 p-2 border-b border-slate-400 flex flex-col justify-center h-16">
+      <div class="font-bold text-center text-emerald-900 mb-1">.rdata (Read-Only)</div>
+      <div class="flex justify-between text-[8px] px-2"><span class="text-slate-600">RAW Addr: 0xA00</span><span class="text-slate-600">Raw Size: 0x200</span></div>
+     </div>
+      
+     <div class="bg-amber-100 p-2 border-b border-slate-400 flex flex-col justify-center h-16">
+      <div class="font-bold text-center text-amber-900 mb-1">.data (Var Global)</div>
+      <div class="flex justify-between text-[8px] px-2"><span class="text-slate-600">RAW Addr: 0xC00</span><span class="text-slate-600">Raw Size: 0x200</span></div>
+     </div>
+
+     <div class="bg-purple-100 p-2 border-b border-slate-400 flex flex-col justify-center h-16">
+      <div class="font-bold text-center text-purple-900 mb-1">.rsrc (Resource/Icon)</div>
+      <div class="flex justify-between text-[8px] px-2"><span class="text-slate-600">RAW Addr: 0xE00</span><span class="text-slate-600">Raw Size: 0x400</span></div>
+     </div>
+      
+     <div class="bg-pink-100 p-2 border-b border-slate-400 flex flex-col justify-center h-16">
+      <div class="font-bold text-center text-pink-900 mb-1">.reloc (Relocation)</div>
+      <div class="flex justify-between text-[8px] px-2"><span class="text-slate-600">RAW Addr: 0x1200</span><span class="text-slate-600">Raw Size: 0x200</span></div>
+     </div>
+
+     <div class="bg-slate-100 flex-1 flex items-center justify-center text-slate-400 italic text-[7px] text-center p-2 border-t border-slate-300">
+       (.bss tidak memakan tempat di RAW Disk)
+     </div>
+
+    </div>
+    <div class="text-[9px] text-slate-600 text-center mt-2 bg-white p-1.5 rounded border border-slate-200">
+      DOS & PE Headers sengaja disembunyikan di visualisasi ini karena saat<b>runtime</b>(analisis dinamis), debugger berfokus pada eksekusi section.
+    </div>
+  </div>
+
+  <!-- Arrows 1 -->
+  <div class="hidden xl:flex flex-col justify-center items-center text-blue-400 font-bold text-2xl"></div>
+
+  <!-- Column 2: Virtual Memory (Ilusi OS) -->
+  <div class="flex-[1.2] flex flex-col items-stretch bg-blue-50 p-2 rounded-lg border border-blue-200 relative">
+    <div class="font-bold text-blue-900 mb-2 text-xs text-center flex flex-col">
+     <span> 2. Ilusi Virtual (Aplikasi A)</span>
+     <span class="text-[9px] font-normal text-blue-600">(Fokus Analisis Dinamis)</span>
+    </div>
+     
+    <div class="flex-1 bg-white shadow-sm text-[9px] font-mono flex flex-col border border-blue-400 relative">
+      
+     <!-- Kernel -->
+     <div class="flex border-b border-white h-7">
+      <div class="w-16 text-right pr-1 text-[8px] text-slate-500 flex flex-col justify-between bg-slate-100 font-bold"><span>0xFFFFFFFF</span><span>0x80000000</span></div>
+      <div class="flex-1 bg-slate-800 text-slate-300 flex items-center justify-center font-bold tracking-widest cursor-default">KERNEL SPACE</div>
+     </div>
+
+     <!-- Stack -->
+     <div class="flex border-b border-white h-10">
+      <div class="w-16 text-right pr-1 text-[8px] text-indigo-700 flex flex-col justify-between bg-indigo-50 font-bold"><span>0x0012FFFF</span><span>0x0012E000</span></div>
+      <div class="flex-1 bg-indigo-200 text-indigo-900 flex flex-col items-center justify-center font-bold relative group cursor-help transition-colors hover:bg-indigo-300">
+       <span>⬇️ STACK (App A)</span>
+       <span class="text-[7px] font-normal absolute bottom-0">Alokasi Otomatis (8KB)</span>
+       <!-- Tooltip -->
+       <div class="tooltip-box">Dialokasikan Dinamis oleh OS berdasarkan ukuran 'SizeOfStackReserve'.</div>
+      </div>
+     </div>
+      
+     <!-- Free -->
+     <div class="flex border-b border-white flex-1 min-h-[20px]">
+      <div class="w-16 text-right pr-1 text-[8px] text-slate-400 flex flex-col justify-between bg-slate-50 font-bold"><span>...</span><span>...</span></div>
+      <div class="flex-1 bg-slate-50 text-slate-400 flex items-center justify-center italic relative group">
+        ... Ruang Hampa ...
+      </div>
+     </div>
+
+     <!-- Heap -->
+     <div class="flex border-b border-white h-10">
+      <div class="w-16 text-right pr-1 text-[8px] text-emerald-700 flex flex-col justify-between bg-emerald-50 font-bold"><span>0x00A0FFFF</span><span>0x00A00000</span></div>
+      <div class="flex-1 bg-emerald-200 text-emerald-900 flex flex-col items-center justify-center font-bold relative group cursor-help transition-colors hover:bg-emerald-300">
+       <span>⬆️ HEAP (App A)</span>
+       <span class="text-[7px] font-normal absolute bottom-0">Alokasi malloc() (64KB)</span>
+       <!-- Tooltip -->
+       <div class="tooltip-box">Area dinamis yang lahir saat Anda memanggil new atau malloc().</div>
+      </div>
+     </div>
+      
+     <!-- BSS -->
+     <div class="flex border-b border-white h-8">
+      <div class="w-16 text-right pr-1 text-[8px] text-slate-600 flex flex-col justify-between bg-slate-100 font-bold"><span>0x00404FFF</span><span>0x00403000</span></div>
+      <div class="flex-1 bg-slate-200 text-slate-600 flex items-center justify-center font-bold relative group cursor-help transition-colors hover:bg-slate-300">
+         .BSS (Dinolkan OS)
+        <!-- Tooltip -->
+        <div class="tooltip-box">Dialokasikan dari Virt Size: 0x2000.<br>Diisi dengan padding 0x00 oleh OS.</div>
+      </div>
+     </div>
+
+     <!-- Data -->
+     <div class="flex border-b border-white h-8">
+      <div class="w-16 text-right pr-1 text-[8px] text-amber-800 flex flex-col justify-between bg-amber-50 font-bold"><span>0x00402FFF</span><span>0x00402000</span></div>
+      <div class="flex-1 bg-amber-100 text-amber-800 flex items-center justify-center font-bold relative group cursor-help transition-colors hover:bg-amber-200">
+         .DATA / .RDATA
+        <!-- Tooltip -->
+        <div class="tooltip-box">Disalin dari RAW Addr 0xC00 & 0xA00.<br>Memuat variabel global berinisialisasi.</div>
+      </div>
+     </div>
+
+     <!-- Text -->
+     <div class="flex border-b border-white h-9">
+      <div class="w-16 text-right pr-1 text-[8px] text-blue-800 flex flex-col justify-between bg-blue-50 font-bold"><span>0x00401FFF</span><span>0x00401000</span></div>
+      <div class="flex-1 bg-blue-200 text-blue-900 flex items-center justify-center font-bold relative group cursor-help transition-colors hover:bg-blue-300">
+         .TEXT (Instruksi)
+        <!-- Tooltip -->
+        <div class="tooltip-box">Disalin dari RAW Addr 0x400.<br>VA Absolute = ImageBase (0x400000) + RVA (0x1000).</div>
+      </div>
+     </div>
+
+     <!-- Header -->
+     <div class="flex h-7">
+      <div class="w-16 text-right pr-1 text-[8px] text-slate-500 flex flex-col justify-between bg-slate-100 font-bold"><span>0x00400FFF</span><span>0x00400000</span></div>
+      <div class="flex-1 bg-slate-300 text-slate-700 flex flex-col items-center justify-center font-bold leading-tight relative group cursor-help transition-colors hover:bg-slate-400">
+       <span>PE Headers</span>
+       <!-- Tooltip -->
+       <div class="tooltip-box">ImageBase: Header dimuat di awal.<br>Disalin dari RAW Addr 0x0.</div>
+      </div>
+     </div>
+      
+    </div>
+    <div class="text-[9px] text-slate-600 text-center mt-2 bg-white p-1.5 rounded border border-blue-200">
+     <b>Arahkan Kursor (Hover)</b>ke kotak-kotak di atas untuk melihat detail kalkulasi<i>Offset</i>-nya.
+    </div>
+  </div>
+
+  <!-- Arrows MMU -->
+  <div class="hidden xl:flex flex-col justify-center items-center text-emerald-500 font-bold text-2xl relative min-w-[60px]">
+   <span class="text-[9px] absolute top-1/3 -translate-y-[20px] bg-white px-1 rounded text-slate-600 border border-slate-300 shadow-sm z-10 whitespace-nowrap">4KB Paging</span>
+    
+   <span class="text-[10px] absolute bottom-1/3 translate-y-[20px] font-mono bg-emerald-100 text-emerald-900 px-1.5 border border-emerald-400 rounded shadow-sm z-10">MMU</span>
+  </div>
+
+  <!-- Column 3: Physical Memory (Broad Perspective VERTICAL) -->
+  <div class="flex-[1.2] flex flex-col items-stretch bg-emerald-50 p-2 rounded-lg border border-emerald-300">
+    <div class="font-bold text-emerald-900 mb-2 text-xs text-center flex flex-col">
+     <span>️ 3. Realita Fisik (RAM Chip)</span>
+     <span class="text-[9px] font-normal text-emerald-600">(Fokus Arsitektur Hardware)</span>
+    </div>
+     
+    <div class="flex-1 bg-emerald-100 border-2 border-emerald-400 p-1 flex flex-col justify-end gap-[3px] overflow-hidden text-[9px] font-mono shadow-inner relative">
+     <div class="absolute inset-0 flex items-center justify-center opacity-[0.05] font-bold text-6xl text-emerald-900 pointer-events-none -rotate-90">HARDWARE</div>
+      
+     <!-- Memory Frames vertically -->
+     <div class="flex items-center gap-1 z-10">
+      <div class="w-12 text-right text-[8px] text-emerald-800 font-bold opacity-70">0x3F2000</div>
+      <div class="flex-1 bg-pink-100 text-pink-700 border border-pink-400 rounded-sm text-center font-bold h-6 flex items-center justify-center shadow-sm">Aplikasi B (STACK)</div>
+     </div>
+
+     <div class="flex items-center gap-1 z-10">
+      <div class="w-12 text-right text-[8px] text-emerald-800 font-bold">0x3F1000</div>
+      <div class="flex-1 bg-indigo-500 text-white border border-indigo-700 rounded-sm flex items-center justify-between px-2 h-6 shadow-sm">
+       <b>App A (STACK Page 1)</b><span class="text-[7px] text-indigo-200">Virt: 0x12F000</span>
+      </div>
+     </div>
+
+     <div class="flex items-center gap-1 z-10">
+      <div class="w-12 text-right text-[8px] text-emerald-800 font-bold">0x3F0000</div>
+      <div class="flex-1 bg-blue-500 text-white border border-blue-700 rounded-sm flex items-center justify-between px-2 h-6 shadow-sm">
+       <b>App A (TEXT)</b><span class="text-[7px] text-blue-200">Virt: 0x401000</span>
+      </div>
+     </div>
+
+     <div class="flex items-center gap-1 z-10">
+      <div class="w-12 text-right text-[8px] text-emerald-800 font-bold opacity-70">0x3EF000</div>
+      <div class="flex-1 bg-slate-700 text-slate-200 border border-slate-900 rounded-sm text-center font-bold h-6 flex items-center justify-center shadow-sm tracking-wider">KERNEL OS</div>
+     </div>
+
+     <div class="flex items-center gap-1 z-10">
+      <div class="w-12 text-right text-[8px] text-emerald-800 font-bold opacity-70">0x3EE000</div>
+      <div class="flex-1 bg-pink-500 text-white border border-pink-700 rounded-sm text-center font-bold h-6 flex items-center justify-center shadow-sm">Aplikasi B (TEXT)</div>
+     </div>
+      
+     <div class="flex items-center gap-1 z-10">
+      <div class="w-12 text-right text-[8px] text-emerald-800 font-bold opacity-70">0x3ED000</div>
+      <div class="flex-1 bg-slate-200 text-slate-500 border border-slate-300 rounded-sm text-center h-6 flex items-center justify-center">Page Kosong</div>
+     </div>
+
+     <div class="flex items-center gap-1 z-10">
+      <div class="w-12 text-right text-[8px] text-emerald-800 font-bold">0x3EC000</div>
+      <div class="flex-1 bg-emerald-500 text-white border border-emerald-700 rounded-sm flex items-center justify-between px-2 h-6 shadow-sm">
+       <b>App A (HEAP)</b><span class="text-[7px] text-emerald-200">Virt: 0xA00000</span>
+      </div>
+     </div>
+
+     <div class="flex items-center gap-1 z-10">
+      <div class="w-12 text-right text-[8px] text-emerald-800 font-bold">0x3EB000</div>
+      <div class="flex-1 bg-indigo-400 text-white border border-indigo-600 rounded-sm flex items-center justify-between px-2 h-6 shadow-sm relative">
+       <b>App A (STACK Page 2)</b><span class="text-[7px] text-indigo-100">Virt: 0x12E000</span>
+      </div>
+     </div>
+
+     <div class="flex items-center gap-1 z-10">
+      <div class="w-12 text-right text-[8px] text-emerald-800 font-bold">0x3EA000</div>
+      <div class="flex-1 bg-amber-400 text-amber-900 border border-amber-500 rounded-sm flex items-center justify-between px-2 font-bold h-6 shadow-sm">
+       <b>App A (DATA)</b><span class="text-[7px] text-amber-800">Virt: 0x402000</span>
+      </div>
+     </div>
+
+    </div>
+    <div class="text-[9px] text-emerald-900 text-center mt-2 bg-white p-1.5 rounded border border-emerald-300 leading-tight">
+     <b>Fragmentasi Binal:</b>Perhatikan Stack A terpecah di alamat<b>0x3F1000</b>&<b>0x3EB000</b>, disela oleh Heap, Kernel, dan Aplikasi B.
+    </div>
+  </div>
+
+ </div>
+</div>
+
+<!-- Content: STACK -->
+<div id="group-stack" class="hidden">
+ <div class="card">
+  <h2 class="section-title">Membedah Memori Stack & Pengambilan Argumen</h2>
+  <p class="text-sm text-slate-600 mb-4 arch-desc-stack"></p>
+   
+  <div class="flex flex-col lg:flex-row gap-4 mb-6">
+   <div class="flex-1 border border-slate-200 rounded overflow-hidden flex flex-col">
+     <div class="bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600 border-b border-slate-200 flex justify-between items-center">
+      <span>C++ Code: Fungsi Penjumlahan</span>
+      <a href="https://playcode.io/cpp-playground" target="_blank" class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 shadow-sm transition-colors font-normal">Playcode ↗</a>
+     </div>
+     <pre class="code-block h-full"><code class="arch-cpp-stack"></code></pre>
+   </div>
+   <div class="flex-1 border border-slate-200 rounded overflow-hidden flex flex-col">
+     <div class="bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600 border-b border-slate-200 flex justify-between items-center">
+      <span>Assembly: Proses Pemanggilan (Call)</span>
+      <a href="https://app.x64.halb.it/" target="_blank" class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 shadow-sm transition-colors font-normal">Halb.it ↗</a>
+     </div>
+     <pre class="code-block dark h-full"><code class="arch-asm-stack"></code></pre>
+   </div>
+  </div>
+   
+  <!-- Interactive Animation -->
+  <div class="border border-slate-300 rounded-lg bg-slate-50 overflow-hidden shadow-sm mt-4">
+   <div class="bg-indigo-100 border-b border-indigo-200 px-3 py-2 flex justify-between items-center">
+    <div class="font-bold text-[13px] text-indigo-900"> Simulasi Relasi Register & RAM</div>
+   </div>
+    
+   <div class="flex flex-col md:flex-row">
+    <!-- Code Player -->
+    <div class="flex-[1.5] bg-slate-900 text-slate-300 p-2 overflow-x-auto border-r border-slate-700" id="anim-code-stack">
+     <!-- Populated by JS -->
+    </div>
+     
+    <!-- Visualizer -->
+    <div class="flex-[1] flex flex-col bg-slate-100">
+     <!-- Registers -->
+     <div class="bg-white border-b border-slate-200 p-2">
+      <div class="text-[10px] font-bold text-slate-400 mb-1 text-center uppercase tracking-wider">Nilai Register (CPU)</div>
+      <div class="border border-slate-200 rounded shadow-inner" id="anim-regs-stack">
+       <!-- Populated by JS -->
+      </div>
+     </div>
+      
+     <!-- RAM -->
+     <div class="p-2 flex-1">
+      <div class="text-[10px] font-bold text-slate-400 mb-1 text-center uppercase tracking-wider">Memori RAM (Stack)</div>
+      <div class="border border-slate-200 rounded shadow-inner bg-white flex flex-col overflow-hidden" id="anim-mem-stack">
+       <!-- Populated by JS -->
+      </div>
+      <div class="text-[9px] text-slate-400 mt-2 text-center" id="anim-desc-stack">Klik "Langkah Selanjutnya" untuk memulai</div>
+     </div>
+    </div>
+   </div>
+    
+   <div class="bg-slate-200 border-t border-slate-300 px-3 py-2 flex gap-2">
+     <button onclick="stepAnim('stack')" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded shadow transition-colors flex items-center gap-1">Langkah Selanjutnya ⏭️</button>
+     <button onclick="resetAnim('stack')" class="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded shadow-sm transition-colors">Ulangi </button>
+   </div>
+  </div>
+   
+ </div>
+</div>
+ 
+<!-- Content: HEAP -->
+<div id="group-heap" class="hidden">
+ <div class="card">
+  <h2 class="section-title">Heap Memory: Alokasi Dinamis & Pointer</h2>
+  <p class="text-sm text-slate-600 mb-4 arch-desc-heap"></p>
+   
+  <div class="flex flex-col lg:flex-row gap-4 mb-6">
+   <div class="flex-1 border border-slate-200 rounded overflow-hidden flex flex-col">
+     <div class="bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600 border-b border-slate-200 flex justify-between items-center">
+      <span>C++ Code: Operator new / malloc</span>
+      <a href="https://playcode.io/cpp-playground" target="_blank" class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 shadow-sm transition-colors font-normal">Playcode ↗</a>
+     </div>
+     <pre class="code-block h-full"><code class="arch-cpp-heap"></code></pre>
+   </div>
+   <div class="flex-1 border border-slate-200 rounded overflow-hidden flex flex-col">
+     <div class="bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600 border-b border-slate-200 flex justify-between items-center">
+      <span>Assembly: Memanggil libc malloc</span>
+      <a href="https://app.x64.halb.it/" target="_blank" class="text-blue-600 hover:text-blue-800 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 shadow-sm transition-colors font-normal">Halb.it ↗</a>
+     </div>
+     <pre class="code-block dark h-full"><code class="arch-asm-heap"></code></pre>
+   </div>
+  </div>
+   
+  <!-- Interactive Animation -->
+  <div class="border border-slate-300 rounded-lg bg-slate-50 overflow-hidden shadow-sm mt-4">
+   <div class="bg-emerald-100 border-b border-emerald-200 px-3 py-2 flex justify-between items-center">
+    <div class="font-bold text-[13px] text-emerald-900"> Simulasi Relasi Register & RAM (Heap)</div>
+   </div>
+    
+   <div class="flex flex-col md:flex-row">
+    <div class="flex-[1.5] bg-slate-900 text-slate-300 p-2 overflow-x-auto border-r border-slate-700" id="anim-code-heap"></div>
+     
+    <div class="flex-[1] flex flex-col bg-slate-100">
+     <div class="bg-white border-b border-slate-200 p-2">
+      <div class="text-[10px] font-bold text-slate-400 mb-1 text-center uppercase tracking-wider">Nilai Register (CPU)</div>
+      <div class="border border-slate-200 rounded shadow-inner" id="anim-regs-heap"></div>
+     </div>
+      
+     <div class="p-2 flex-1">
+      <div class="text-[10px] font-bold text-slate-400 mb-1 text-center uppercase tracking-wider">Memori RAM (Gabungan)</div>
+      <div class="border border-slate-200 rounded shadow-inner bg-white flex flex-col overflow-hidden" id="anim-mem-heap"></div>
+      <div class="text-[9px] text-slate-400 mt-2 text-center" id="anim-desc-heap">Klik "Langkah Selanjutnya" untuk memulai</div>
+     </div>
+    </div>
+   </div>
+    
+   <div class="bg-slate-200 border-t border-slate-300 px-3 py-2 flex gap-2">
+     <button onclick="stepAnim('heap')" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded shadow transition-colors flex items-center gap-1">Langkah Selanjutnya ⏭️</button>
+     <button onclick="resetAnim('heap')" class="px-4 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded shadow-sm transition-colors">Ulangi </button>
+   </div>
+  </div>
+   
+ </div>
+</div>
+</div>
+
+<script>
+  let animStates = { stack: { step: 0 }, heap: { step: 0 } };
+
+ 
+ // --- DATA DICTIONARY ---
+ const dData = {
+  sp: { x64: 'RSP', x86: 'ESP' },
+  descStack: {
+   x64: "Di arsitektur<b>x64</b>, instruksi pengambilan manual seperti<code>[rsp+8]</code>jarang digunakan untuk argumen awal, karena Sistem Operasi mewajibkan argumen dikirim dengan cepat via register (seperti RDI dan RSI). Stack memory menjadi lebih bersih dan utamanya hanya menyimpan alamat kembalian (Return Address).",
+   x86: "Di arsitektur<b>x86 (32-bit)</b>,<b>Stack Pointer (ESP)</b>adalah nyawa dari pemanggilan fungsi. Karena argumen diselipkan (PUSH) ke dalam RAM Stack, fungsi tujuan harus membaca memori menggunakan aritmatika pointer seperti<code>[esp+4]</code>. Angka<b>+4</b>atau<b>+8</b>ini adalah<b>Offset</b>(jarak dalam satuan byte) yang ditambahkan ke alamat dasar (<i>base address</i>) di dalam register ESP untuk menjangkau argumen yang ada di atasnya."
+  },
+  cppStack: {
+   x64: `long long add(long long a, long long b) {\n  return a + b;\n}\n\nint main() {\n  long long result = add(3, 4);\n  return 0;\n}`,
+   x86: `int add(int a, int b) {\n  return a + b;\n}\n\nint main() {\n  int result = add(3, 4);\n  return 0;\n}`
+  },
+  asmStack: {
+   x64: `; --- DI DALAM MAIN ---\nmov rdi, 3    ; Argumen 'a' via Register\nmov rsi, 4    ; Argumen 'b' via Register\ncall add     ; Lompat ke fungsi\n\n; --- DI DALAM FUNGSI ADD ---\nmov rax, rdi   ; Ambil 'a'\nadd rax, rsi   ; Tambah 'b'\nret        ; Kembali ke pemanggil`,
+   x86: `; --- DI DALAM MAIN ---\npush 4      ; Tumpuk argumen 'b' ke RAM\npush 3      ; Tumpuk argumen 'a' ke RAM\ncall add     ; Lompat ke fungsi\n\n; --- DI DALAM FUNGSI ADD ---\nmov eax, [esp+4] ; Lihat tumpukan RAM a\nadd eax, [esp+8] ; Lihat tumpukan RAM b\nret        ; Kembali ke pemanggil`
+  },
+  
+  descHeap: {
+   x64: "Pointer 64-bit pada dasarnya adalah nilai 8 byte yang disimpan di Stack (atau register), yang valuenya merupakan 'alamat blok memori' di lautan Heap.<br><br><span class='text-emerald-700 font-bold'>Peran Register RAX:</span>Saat Anda meminta memori dinamis (misal via<code>malloc</code>), aturan standar pemanggilan (<i>Calling Convention</i>) mewajibkan fungsi tersebut mengembalikan hasilnya sebagai<i>Return Value</i>melalui register<b>RAX</b>. Oleh karena itu, RAX memegang peran krusial sebagai 'kunci pointer' yang mengarah ke alamat awal blok Heap Anda.",
+   x86: "Pointer 32-bit pada dasarnya adalah nilai 4 byte yang disimpan di Stack, yang valuenya menunjuk ke alamat Heap acak hasil alokasi dinamis.<br><br><span class='text-emerald-700 font-bold'>Peran Register EAX:</span>Setelah fungsi alokasi seperti<code>malloc</code>selesai dieksekusi, sistem operasi selalu menempatkan alamat memori (pointer) yang baru saja didapat ke dalam register<b>EAX</b>(sebagai nilai<i>Return</i>). Itulah mengapa EAX menjadi gerbang utama untuk mulai menulis atau membaca data di Heap."
+  },
+  cppHeap: {
+   x64: `void allocate() {\n  // p dialokasikan di Stack\n  // 'new' meminta ruang di Heap\n  long long* p = new long long(42);\n  \n  // membersihkan Heap\n  delete p;\n}`,
+   x86: `void allocate() {\n  // p dialokasikan di Stack\n  // 'new' meminta ruang di Heap\n  int* p = new int(42);\n  \n  // membersihkan Heap\n  delete p;\n}`
+  },
+  asmHeap: {
+   x64: `; Asumsi malloc adalah libc malloc\nmov rdi, 8    ; Minta 8 byte\ncall malloc    ; RAX = Alamat Heap baru\nmov qword [rax], 42 ; Tulis '42' ke Heap\n\nmov rdi, rax   ; Kirim alamat ke free\ncall free     ; Bebaskan Heap`,
+   x86: `; Asumsi malloc adalah libc malloc\npush 4      ; Minta 4 byte\ncall malloc    ; EAX = Alamat Heap baru\nmov dword [eax], 42 ; Tulis '42' ke Heap\n\npush eax     ; Kirim alamat ke free\ncall free     ; Bebaskan Heap`
+  }
+ };
+
+ const animData = {
+  stack: {
+   x86: {
+    code: ["// --- DI DALAM FUNGSI MAIN ---", "push 4      // Argumen ke-2 (b)", "push 3      // Argumen ke-1 (a)", "call add_func  // Simpan RetAddr & Lompat", "// --- DI DALAM FUNGSI ADD ---", "mov eax, [esp+4] // Baca offset [ESP+4]", "add eax, [esp+8] // Baca offset [ESP+8]", "ret       // Kembali & Hapus RetAddr"],
+    regs: ["ESP", "EAX"],
+    memAddrs: ["0x1008", "0x1004", "0x1000", "0x0FFC"],
+    steps: [
+     { l: -1, regs: ["0x1008", "0"], mem: ["(Kosong)", "(Kosong)", "(Kosong)", "(Kosong)"], p: [true, false, false, false], desc: "Kondisi awal. ESP berada di ujung tumpukan RAM." },
+     { l: 1, regs: ["0x1004", "0"], mem: ["(Kosong)", "4 (Nilai b)", "(Kosong)", "(Kosong)"], p: [false, true, false, false], desc: "PUSH = ESP berkurang 4 byte. Lalu angka 4 ditulis ke RAM [0x1004]." },
+     { l: 2, regs: ["0x1000", "0"], mem: ["(Kosong)", "4 (Nilai b)", "3 (Nilai a)", "(Kosong)"], p: [false, false, true, false], desc: "PUSH = ESP berkurang lagi. Angka 3 ditulis ke RAM [0x1000]." },
+     { l: 3, regs: ["0x0FFC", "0"], mem: ["(Kosong)", "4 (Nilai b)", "3 (Nilai a)", "0x4010A0 (Ret)"], p: [false, false, false, true], desc: "CALL = Secara diam-diam menumpuk (PUSH) alamat pulang (Return Address) agar CPU ingat jalan kembali. Nilai (contoh 0x4010A0) adalah referensi alamat instruksi yang berada tepat setelah instruksi 'call'." },
+     { l: 5, regs: ["0x0FFC", "3"], mem: ["(Kosong)", "4 (Nilai b)", "3 (Nilai a)", "0x4010A0 (Ret)"], p: [false, false, false, true], hr:2, desc: "Pengambilan offset [ESP+4]: CPU mengakses memori dengan menambahkan offset 4 byte ke alamat dasar ESP. [ESP(0x0FFC) + 4] = Alamat 0x1000. Isinya adalah angka 3." },
+     { l: 6, regs: ["0x0FFC", "7"], mem: ["(Kosong)", "4 (Nilai b)", "3 (Nilai a)", "0x4010A0 (Ret)"], p: [false, false, false, true], hr:1, desc: "Pengambilan offset [ESP+8]: CPU mencari argumen selanjutnya dengan offset 8 byte. [ESP(0x0FFC) + 8] = Alamat 0x1004. Isinya angka 4, yang kemudian dijumlahkan ke register EAX." },
+     { l: 7, regs: ["0x1000", "7"], mem: ["(Kosong)", "4 (Nilai b)", "3 (Nilai a)", "(Sampah)"], p: [false, false, true, false], desc: "RET = Membaca Return Address (0x4010A0) dari Puncak Stack, lalu menaikkan ESP (menghapusnya secara logis)." }
+    ]
+   },
+   x64: {
+    code: ["// --- DI DALAM FUNGSI MAIN ---", "mov rsi, 4    // Argumen 'b' ke Reg!", "mov rdi, 3    // Argumen 'a' ke Reg!", "call add_func  // Simpan RetAddr & Lompat", "// --- DI DALAM FUNGSI ADD ---", "mov rax, rdi   // Ambil dari RDI", "add rax, rsi   // Tambah dari RSI", "ret       // Kembali & Hapus RetAddr"],
+    regs: ["RSP", "RDI", "RSI", "RAX"],
+    memAddrs: ["0x2018", "0x2010", "0x2008", "0x2000"],
+    steps: [
+     { l: -1, regs: ["0x2010", "0", "0", "0"], mem: ["(Kosong)", "(Kosong)", "(Kosong)", "(Kosong)"], p: [false, true, false, false], desc: "Kondisi awal x64. RSP berada di alamat 0x2010." },
+     { l: 1, regs: ["0x2010", "0", "4", "0"], mem: ["(Kosong)", "(Kosong)", "(Kosong)", "(Kosong)"], p: [false, true, false, false], desc: "Angka 4 dimasukkan LANGSUNG ke register perangkat keras (RSI). RAM Stack diabaikan!" },
+     { l: 2, regs: ["0x2010", "3", "4", "0"], mem: ["(Kosong)", "(Kosong)", "(Kosong)", "(Kosong)"], p: [false, true, false, false], desc: "Angka 3 dimasukkan LANGSUNG ke register perangkat keras (RDI). Sangat cepat!" },
+     { l: 3, regs: ["0x2008", "3", "4", "0"], mem: ["(Kosong)", "(Kosong)", "0x8050 (Ret)", "(Kosong)"], p: [false, false, true, false], desc: "CALL = RSP otomatis berkurang 8 byte (karena ukuran alamat/pointer pada arsitektur 64-bit adalah 8 byte) untuk menampung Return Address. Nilai 0x8050 adalah contoh referensi alamat instruksi yang persis berada setelah instruksi 'call' ini." },
+     { l: 5, regs: ["0x2008", "3", "4", "3"], mem: ["(Kosong)", "(Kosong)", "0x8050 (Ret)", "(Kosong)"], p: [false, false, true, false], desc: "Fungsi memindahkan data dari register (RDI) ke RAX. Tanpa aritmatika pointer memori." },
+     { l: 6, regs: ["0x2008", "3", "4", "7"], mem: ["(Kosong)", "(Kosong)", "0x8050 (Ret)", "(Kosong)"], p: [false, false, true, false], desc: "RAX dijumlahkan dengan RSI." },
+     { l: 7, regs: ["0x2010", "3", "4", "7"], mem: ["(Kosong)", "(Kosong)", "(Sampah)", "(Kosong)"], p: [false, true, false, false], desc: "RET = Membaca Return Address, lalu RSP naik kembali membuangnya." }
+    ]
+   }
+  },
+  heap: {
+   x86: {
+    code: ["// --- ALOKASI MEMORI DINAMIS ---", "push 4      // Minta RAM 4 byte", "call malloc   // Minta OS carikan Heap", "add esp, 4    // Bersihkan argumen PUSH", "mov [eax], 42  // Tulis nilai ke Heap", "// ... proses berjalan ...", "push eax     // Kirim pointer ke free", "call free    // OS Hapus Heap"],
+    regs: ["ESP", "EAX (Pointer)"],
+    memAddrs: ["0x1004 (Stack)", "0x1000 (Stack)", "...", "0x8F00 (Heap)"],
+    steps: [
+     { l: -1, regs: ["0x1004", "0"], mem: ["(Data Lokal)", "(Kosong)", "...", "(Milik OS/Kosong)"], p: [true, false, false, false], desc: "Program butuh memori yang bisa bertahan melewatai fungsi. Ia harus minta ke OS (Heap)." },
+     { l: 1, regs: ["0x1000", "0"], mem: ["(Data Lokal)", "4 (Jumlah Byte)", "...", "(Milik OS/Kosong)"], p: [false, true, false, false], desc: "Menyiapkan argumen (4 byte) untuk fungsi malloc." },
+     { l: 2, regs: ["0x0FFC", "0x8F00"], mem: ["(Data Lokal)", "4 (Jumlah Byte)", "...", "(Milik OS/Kosong)"], p: [false, false, false, false], desc: "Fungsi malloc mencari celah kosong di area Heap (contoh: 0x8F00). Sebagai fungsi yang mengembalikan nilai, malloc meletakkan alamat pointer tersebut ke dalam register EAX!" },
+     { l: 3, regs: ["0x1004", "0x8F00"], mem: ["(Data Lokal)", "(Sampah arg)", "...", "(Milik OS/Kosong)"], p: [true, false, false, false], desc: "Argumen '4' dihapus dari Stack. Nilai EAX tetap memegang kunci (Pointer) menuju Heap." },
+     { l: 4, regs: ["0x1004", "0x8F00"], mem: ["(Data Lokal)", "(Sampah arg)", "...", "42 (Data Asli)"], p: [true, false, false, false], hw: 3, desc: "Aritmatika Dereferensi: CPU menulis angka '42' tepat di koordinat memori yang tersimpan di EAX (0x8F00)." },
+     { l: 7, regs: ["0x1000", "0x8F00"], mem: ["(Data Lokal)", "0x8F00 (Ptr)", "...", "(DIBEBASKAN!)"], p: [false, true, false, false], desc: "Fungsi free(eax) memerintahkan OS merampas kembali tanah 0x8F00. Jika Anda lupa memanggil free, RAM Anda bocor (Memory Leak)!" }
+    ]
+   },
+   x64: {
+    code: ["// --- ALOKASI MEMORI DINAMIS ---", "mov rdi, 8    // Minta RAM 8 byte (RDI)", "call malloc   // Minta OS carikan Heap", "         // (Tidak perlu bersihkan)", "mov [rax], 42  // Tulis nilai ke Heap", "// ... proses berjalan ...", "mov rdi, rax   // Kirim pointer ke free", "call free    // OS Hapus Heap"],
+    regs: ["RSP", "RDI (Arg)", "RAX (Pointer)"],
+    memAddrs: ["0x2008 (Stack)", "0x2000 (Stack)", "...", "0x98A00 (Heap)"],
+    steps: [
+     { l: -1, regs: ["0x2008", "0", "0"], mem: ["(Data Lokal)", "(Kosong)", "...", "(Milik OS/Kosong)"], p: [true, false, false, false], desc: "Program butuh memori dinamis." },
+     { l: 1, regs: ["0x2008", "8", "0"], mem: ["(Data Lokal)", "(Kosong)", "...", "(Milik OS/Kosong)"], p: [true, false, false, false], desc: "Argumen ukuran byte disiapkan di register RDI (bukan Stack)." },
+     { l: 2, regs: ["0x2008", "8", "0x98A00"], mem: ["(Data Lokal)", "(Kosong)", "...", "(Milik OS/Kosong)"], p: [true, false, false, false], desc: "Fungsi malloc berhasil menemukan ruang kosong di Heap. Ia kemudian mengembalikan alamat ruang tersebut (pointer) langsung ke dalam register RAX agar bisa kita gunakan." },
+     { l: 4, regs: ["0x2008", "8", "0x98A00"], mem: ["(Data Lokal)", "(Kosong)", "...", "42 (Data Asli)"], p: [true, false, false, false], hw: 3, desc: "Data raksasa ditulis ke RAM area Heap. Stack sama sekali tidak membesar." },
+     { l: 6, regs: ["0x2008", "0x98A00", "0x98A00"], mem: ["(Data Lokal)", "(Kosong)", "...", "42 (Data Asli)"], p: [true, false, false, false], desc: "Pointer disiapkan di RDI untuk dibuang." },
+     { l: 7, regs: ["0x2008", "0x98A00", "0x98A00"], mem: ["(Data Lokal)", "(Kosong)", "...", "(DIBEBASKAN!)"], p: [true, false, false, false], desc: "Heap dikembalikan ke OS. Bebas dari kebocoran!" }
+    ]
+   }
+  }
+ }
+
+ function getD(prop) { return prop[currentArch] || prop; }
+
+ function renderDynamicContent() {
+  document.querySelectorAll('.arch-sp').forEach(el =>el.innerHTML = getD(dData.sp));
+  
+  // Setup Stack Tab
+  document.querySelector('.arch-desc-stack').innerHTML = getD(dData.descStack);
+  document.querySelector('.arch-cpp-stack').innerHTML = getD(dData.cppStack);
+  document.querySelector('.arch-asm-stack').innerHTML = getD(dData.asmStack);
+  
+  // Setup Heap Tab
+  document.querySelector('.arch-desc-heap').innerHTML = getD(dData.descHeap);
+  document.querySelector('.arch-cpp-heap').innerHTML = getD(dData.cppHeap);
+  document.querySelector('.arch-asm-heap').innerHTML = getD(dData.asmHeap);
+  
+  // Init Anims
+  updateAnimUI('stack', 0);
+  updateAnimUI('heap', 0);
+ }
+
+ window.stepAnim = function(id) {
+  const data = animData[id][currentArch];
+  animStates[id].step = (animStates[id].step + 1) % data.steps.length;
+  updateAnimUI(id, animStates[id].step);
+ };
+ 
+ window.resetAnim = function(id) {
+  animStates[id].step = 0;
+  updateAnimUI(id, 0);
+ };
+
+ function updateAnimUI(id, stepIdx) {
+  const data = animData[id][currentArch];
+  const step = data.steps[stepIdx];
+  
+  // 1. Render Code Block
+  let codeHtml = data.code.map((line, i) =>
+   `<div class="anim-line ${i === step.l ? 'active' : ''}">${line}</div>`
+  ).join('');
+  document.getElementById(`anim-code-${id}`).innerHTML = codeHtml;
+  
+  // 2. Render Regs
+  let regsHtml = data.regs.map((regName, i) =>{
+   let prevStep = stepIdx >0 ? data.steps[stepIdx-1] : data.steps[0];
+   let isChanged = stepIdx >0 && prevStep.regs[i] !== step.regs[i];
+   return `<div class="reg-box"><span class="reg-name">${regName}</span><span class="reg-val ${isChanged?'val-changed':''}">${step.regs[i]}</span></div>`;
+  }).join('');
+  document.getElementById(`anim-regs-${id}`).innerHTML = regsHtml;
+  
+  // 3. Render Memory Map
+  let memHtml = data.memAddrs.map((addr, i) =>{
+   let isPointed = step.p && step.p[i];
+   let pointerBadge = isPointed ? `<span class="mem-pointer ml-2">◀ ${getD(dData.sp)}</span>` : '';
+   let hlClass = '';
+   if(step.hr === i) hl,hlClass = 'hl-read';
+   if(step.hw === i) hlClass = 'hl-write';
+   
+   return `
+  <div class="mem-slot ${hlClass}">
+   <div class="mem-addr">${addr}</div>
+   <div class="mem-val">
+    <span>${step.mem[i]}</span>
+     ${pointerBadge}
+   </div>
+  </div>`;
+  }).join('');
+  
+  // Add arrow labels indicating memory direction
+  document.getElementById(`anim-mem-${id}`).innerHTML = `
+   <div class="bg-slate-50 text-[9px] text-center text-slate-400 py-0.5 border-b border-slate-200">Alamat Tinggi (Bawah Stack)</div>
+    ${memHtml}
+   <div class="bg-slate-50 text-[9px] text-center text-slate-400 py-0.5 border-t border-slate-200">Alamat Rendah (Puncak Stack)</div>
+  `;
+  
+  // 4. Render Desc
+  document.getElementById(`anim-desc-${id}`).innerHTML = `<span class="text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200"> Penjelasan:</span><span class="text-slate-700">${step.desc}</span>`;
+ }
+
+ window.switchMainGroup = function(groupId, btn) {
+  ['dasar','stack','heap'].forEach(g =>{
+   document.getElementById('group-' + g).classList.toggle('hidden', g !== groupId);
+  });
+  document.querySelectorAll('#mainTabs .tab-btn').forEach(b =>b.classList.remove('active'));
+  btn.classList.add('active');
+ };
+
+ // Run on load
+ renderDynamicContent();
+</script>
+</body>
+</html>

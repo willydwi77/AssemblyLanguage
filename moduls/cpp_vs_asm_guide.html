@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <link rel="stylesheet" href="style.css" />
+  <script src="app.js"></script>
+  <script src="cpp_asm_data.js"></script>
+</head>
+<body class="antialiased">
+
+<div class="main-container">
+  <!-- Header -->
+  <div class="card bg-white mb-6">
+    <h1 class="page-title">C++ vs NASM Assembly (x86 & x64)</h1>
+    <p class="page-subtitle">Panduan Interaktif: Menerjemahkan kode tingkat tinggi ke bahasa mesin.</p>
+    
+    <!-- Architecture Toggle -->
+    <div class="arch-toggle-container">
+      <div class="arch-toggle-label">Arsitektur:</div>
+      <button id="toggle-x64" onclick="setArch('x64')" class="arch-btn active">x64 (64-bit)</button>
+      <button id="toggle-x86" onclick="setArch('x86')" class="arch-btn inactive">x86 (32-bit)</button>
+    </div>
+  </div>
+
+  <!-- Main Tabs -->
+  <div class="nav-group" id="mainTabs">
+    <button class="tab-btn active" onclick="switchMainGroup('fund', this)">Fundamental</button>
+    <button class="tab-btn" onclick="switchMainGroup('hello', this)">Hello World</button>
+    <button class="tab-btn" onclick="switchMainGroup('arith', this)">Aritmatika</button>
+    <button class="tab-btn" onclick="switchMainGroup('cond', this)">If / Else</button>
+    <button class="tab-btn" onclick="switchMainGroup('loop', this)">Looping</button>
+  </div>
+
+  <div id="content-container"></div>
+</div>
+
+<script>
+  let activeTab = 'fund';
+  let currentStep = 0;
+
+  function renderApp() {
+    const data = animDb[activeTab];
+    let html = '';
+
+    if (activeTab === 'fund') {
+      html = `
+<div class="card">
+ <h2 class="section-title">Fundamental Penulisan: C++ vs Assembly</h2>
+ <p class="content-desc">${data.desc[currentArch]}</p>
+
+ <!-- C++ Fundamental -->
+ <div class="mb-8 mt-6">
+  <h3 class="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">Fundamental C++ Modern</h3>
+  <div class="flex flex-col md:flex-row gap-4">
+   <div class="flex-[1] text-sm text-slate-700 space-y-3">
+    <p><strong>1. Entry Point:</strong> Eksekusi OS selalu dimulai secara terstruktur dari dalam blok fungsi <code>int main()</code>.</p>
+    <p><strong>2. Standard Library:</strong> C++ bergantung pada pustaka standar eksternal yang di-include di awal file (contoh: <code>#include &lt;iostream&gt;</code>).</p>
+    <p><strong>3. Abstraksi Tipe Data:</strong> Tipe data diatur dengan ketat atau otomatis (<code>auto</code>). Programmer tidak perlu memikirkan alokasi register.</p>
+    <p><strong>4. Scope (Cakupan):</strong> Variabel yang dideklarasikan di dalam blok kurung kurawal <code>{}</code> akan otomatis dihancurkan ketika eksekusi keluar dari blok tersebut.</p>
+   </div>
+   <div class="flex-[1] border border-slate-200 rounded overflow-hidden">
+    <div class="bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600 border-b border-slate-200">Struktur File C++</div>
+    <pre class="code-block"><code>// 1. Preprocessor Directives
+#include &lt;iostream&gt;
+#include &lt;string&gt;
+
+// 2. Deklarasi Fungsi (Abstraksi)
+void sayHello(std::string name) {
+  // 4. Scope & Logika
+  std::cout &lt;&lt; "Hello " &lt;&lt; name &lt;&lt; "\\n";
+}
+
+// 3. Entry Point Utama
+int main() {
+  auto myName = "Budi";
+  sayHello(myName);
+  return 0; // OS Exit Code
+}</code></pre>
+   </div>
+  </div>
+ </div>
+
+ <!-- Assembly Fundamental -->
+ <div>
+  <h3 class="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">Fundamental Assembly NASM</h3>
+   
+  <div class="info-box mb-4">
+   <p><strong>Sintaks Intel:</strong> NASM menggunakan standar Sintaks Intel dengan format: <code>Instruksi [Tujuan], [Sumber]</code>.<br>Contoh: <code>mov eax, 5</code> (Masukkan/Copy nilai 5 ke dalam register EAX).</p>
+  </div>
+
+  <div class="flex flex-col md:flex-row gap-4 mb-6">
+   <div class="flex-[1] text-sm text-slate-700 space-y-3">
+    <p><strong>1. Pembagian Seksi Memori (Sections):</strong> Berbeda dengan C++, file Assembly membagi struktur program murni berdasarkan Hak Akses Memori OS:</p>
+    <ul class="list-disc pl-5 space-y-1">
+     <li><code>.data</code>: Variabel global Read-Write.</li>
+     <li><code>.bss</code>: Variabel kosong Read-Write.</li>
+     <li><code>.text</code>: Instruksi eksekusi Read-Only dan Executable.</li>
+    </ul>
+    <p><strong>2. Label dan Alamat Memori:</strong> Tidak ada nama fungsi sungguhan. Yang ada hanyalah <strong>Label</strong> yang berfungsi sebagai penanda koordinat/alamat memori.</p>
+   </div>
+   <div class="flex-[1] border border-slate-200 rounded overflow-hidden">
+    <div class="bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600 border-b border-slate-200">Struktur File Assembly</div>
+    <pre class="code-block dark h-full"><code>; 1. Deklarasi Eksternal
+extern printf
+
+; 2. Seksi Data Global
+section .data
+  teks db "Hello", 0 ; db = Define Byte
+
+; 3. Seksi Kode (Logika Program)
+section .text
+global main       ; Ekspor label 'main'
+main:
+  mov rax, 5     ; Register RAX diisi 5
+  mov [teks], al   ; Tulis ke memori (Pointer)
+  ret         ; Kembali ke OS</code></pre>
+   </div>
+  </div>
+
+  <h4 class="font-bold text-slate-700 mb-2 mt-8">Perbedaan Kunci Penulisan: x86 (32-bit) vs x64 (64-bit)</h4>
+  <table class="op-table">
+    <thead>
+     <tr>
+      <th>Konsep</th>
+      <th>x86 (32-bit) Klasik</th>
+      <th>x64 (64-bit) Modern (Khususnya Windows)</th>
+     </tr>
+    </thead>
+    <tbody>
+     <tr>
+      <td class="font-semibold text-slate-800">Ukuran & Awalan Register</td>
+      <td class="font-mono text-blue-700">EAX, EBX, ECX, ESP (4 Byte)</td>
+      <td class="font-mono text-emerald-700">RAX, RBX, RCX, RSP (8 Byte)</td>
+     </tr>
+     <tr>
+      <td class="font-semibold text-slate-800">Argumen Fungsi</td>
+      <td>Dilempar lambat melalui tumpukan Stack RAM menggunakan instruksi <code>PUSH</code> satu per satu (Kanan ke Kiri).</td>
+      <td>Sangat cepat! 4 Argumen pertama dimasukkan ke register perangkat keras: <code>RCX, RDX, R8, R9</code>.</td>
+     </tr>
+     <tr>
+      <td class="font-semibold text-slate-800">Gaya Pengalamatan</td>
+      <td>Alamat absolut/kaku. Contoh: <code>mov eax, [0x403000]</code></td>
+      <td>Cenderung <strong>RIP-relative</strong> (<code>default rel</code>). Aman dari pergeseran ASLR oleh OS.</td>
+     </tr>
+     <tr>
+      <td class="font-semibold text-slate-800">Aturan Shadow Space (Stack)</td>
+      <td>Tidak ada aturan khusus, hanya <code>PUSH</code> dan <code>CALL</code>.</td>
+      <td><strong>Wajib</strong> mengalokasikan 32-byte memori kosong (<code>sub rsp, 32</code>) setiap kali memanggil fungsi eksternal.</td>
+     </tr>
+    </tbody>
+  </table>
+ </div>
+</div>
+      `;
+    } else {
+      html = `
+<div class="card">
+ <h2 class="section-title">${data.title}</h2>
+ <p class="content-desc">${data.desc[currentArch]}</p>
+
+ <div class="flex flex-col gap-6 mb-6">
+   <div class="border border-slate-200 rounded overflow-hidden flex flex-col">
+     <div class="bg-slate-100 px-3 py-1.5 text-[11px] font-bold text-slate-600 border-b border-slate-200">Kode C++</div>
+     <pre class="code-block"><code>${data.cppCode}</code></pre>
+   </div>
+   <div class="border border-slate-200 rounded overflow-hidden flex flex-col shadow-lg">
+     <div class="bg-slate-800 text-white px-3 py-1.5 text-[11px] font-bold border-b border-slate-700 flex justify-between">
+        <span>Simulasi Eksekusi Assembly</span>
+        <span class="text-blue-400 normal-case">${currentArch === 'x64' ? 'x64 (64-bit)' : 'x86 (32-bit)'}</span>
+     </div>
+     
+     <div class="anim-panel-container flex flex-col h-[550px] !border-none !rounded-none shadow-none">
+      <div class="flex flex-1 overflow-hidden">
+        
+        <!-- Code -->
+        <div class="flex-[1.2] flex flex-col anim-panel-border-r">
+          <div class="anim-panel-header">Source Code</div>
+          <div class="anim-panel-code flex-1 overflow-auto py-2" id="anim-code-view"></div>
+        </div>
+        
+        <!-- Dashboard -->
+        <div class="flex-[2] flex flex-col">
+          <div class="flex flex-1 anim-panel-border-b overflow-hidden">
+            <div class="flex-1 flex flex-col anim-panel-border-r">
+              <div class="anim-panel-header">Registers</div>
+              <div class="flex-1 overflow-auto p-2" id="anim-regs-view"></div>
+            </div>
+            <div class="flex-[1.5] flex flex-col">
+              <div class="anim-panel-header">Disassembly</div>
+              <div class="flex-1 overflow-auto p-2 whitespace-nowrap" id="anim-disasm-view"></div>
+            </div>
+          </div>
+          <div class="flex flex-1 overflow-hidden">
+            <div class="flex-[1.5] flex flex-col anim-panel-border-r">
+              <div class="anim-panel-header">Stack memory</div>
+              <div class="flex-1 overflow-auto p-2 whitespace-nowrap" id="anim-stack-view"></div>
+            </div>
+            <div class="flex-1 flex flex-col">
+              <div class="anim-panel-header">Terminal</div>
+              <div class="flex-1 overflow-auto p-2 text-[#4af626]" id="anim-term-view"></div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+      
+      <!-- Controls -->
+      <div class="bg-slate-200 border-t border-slate-300 px-3 py-2 flex gap-2">
+        <button onclick="stepAnim()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded shadow transition-colors flex items-center gap-1">Langkah ⏭️</button>
+        <button onclick="resetAnim()" class="px-4 py-1.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold rounded shadow-sm transition-colors">Ulangi 🔄</button>
+      </div>
+
+     </div>
+   </div>
+ </div>
+
+</div>
+      `;
+    }
+
+    document.getElementById('content-container').innerHTML = html;
+    if (data.isAnim) {
+        currentStep = 0;
+        updateAnimUI();
+    }
+  }
+
+  function updateAnimUI() {
+      const data = animDb[activeTab][currentArch];
+      const step = data.steps[currentStep];
+
+      let codeHtml = data.code.map((line, i) => {
+        let isActive = (i === step.l);
+        return `<div class="anim-line ${isActive ? 'active' : ''}">
+                  <div class="anim-line-num">${i + 1}</div>
+                  <div class="flex-1 whitespace-pre">${line}</div>
+                </div>`;
+      }).join('');
+      document.getElementById('anim-code-view').innerHTML = codeHtml;
+
+      let regsHtml = '';
+      for (const [reg, val] of Object.entries(step.regs)) {
+        regsHtml += `<div><span class="hl-reg">${reg.padEnd(5, ' ')}</span> : <span class="hl-val">${val}</span></div>`;
+      }
+      document.getElementById('anim-regs-view').innerHTML = `<pre class="m-0 whitespace-pre">${regsHtml}</pre>`;
+
+      let disasmHtml = step.disasm.map(d => {
+        let bgClass = d.active ? 'bg-[#37373d]' : '';
+        return `<div class="flex ${bgClass} py-0.5">
+                  <div class="hl-addr w-[65px]">${d.addr}</div>
+                  <div class="hl-bytes w-[85px] whitespace-nowrap overflow-hidden text-ellipsis">${d.bytes}</div>
+                  <div class="hl-inst flex-1">${d.inst}</div>
+                </div>`;
+      }).join('');
+      document.getElementById('anim-disasm-view').innerHTML = disasmHtml;
+
+      let stackHtml = step.stack.map(s => {
+        return `<div class="flex py-0.5">
+                  <div class="hl-addr w-[130px] text-right">${s.addr}</div>
+                  <div class="hl-bytes flex-1">${s.bytes}</div>
+                  <div class="hl-addr">${s.ascii}</div>
+                </div>`;
+      }).join('');
+      document.getElementById('anim-stack-view').innerHTML = stackHtml;
+
+      document.getElementById('anim-term-view').innerHTML = `<pre class="m-0 whitespace-pre-wrap">${step.term}</pre>`;
+  }
+
+  window.stepAnim = function() {
+    const data = animDb[activeTab][currentArch];
+    currentStep = (currentStep + 1) % data.steps.length;
+    updateAnimUI();
+  };
+
+  window.resetAnim = function() {
+    currentStep = 0;
+    updateAnimUI();
+  };
+
+  window.switchMainGroup = function(tabId, btn) {
+    activeTab = tabId;
+    setActiveTabUI(btn);
+    renderApp();
+  };
+
+  // setArch globally calls renderApp if defined
+  renderApp();
+</script>
+</body>
+</html>
+

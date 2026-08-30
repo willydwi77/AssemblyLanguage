@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    /* Styling for the animation panel */
+    .debug-panel {
+      background-color: #1e1e1e;
+      color: #d4d4d4;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 11px;
+    }
+    .debug-header {
+      background-color: #252526;
+      border-bottom: 1px solid #333333;
+      padding: 4px 8px;
+      color: #e8e8e8;
+      font-size: 11px;
+    }
+    .debug-border-r { border-right: 1px solid #333333; }
+    .debug-border-b { border-bottom: 1px solid #333333; }
+    
+    .reg-name { color: #569cd6; }
+    .reg-val { color: #d4d4d4; }
+    
+    .stack-addr { color: #d4d4d4; }
+    .stack-bytes { color: #569cd6; margin-left: 8px; margin-right: 8px; }
+    
+    .disasm-addr { color: #d4d4d4; }
+    .disasm-bytes { color: #858585; margin-left: 8px; margin-right: 8px; }
+    .disasm-inst { color: #d4d4d4; }
+    
+    /* Scrollbar for dark theme */
+    .debug-panel ::-webkit-scrollbar { width: 10px; height: 10px; }
+    .debug-panel ::-webkit-scrollbar-track { background: #1e1e1e; }
+    .debug-panel ::-webkit-scrollbar-thumb { background: #424242; border: 1px solid #1e1e1e; }
+    .debug-panel ::-webkit-scrollbar-thumb:hover { background: #4f4f4f; }
+    
+    .anim-line {
+      display: flex;
+      padding-right: 8px;
+      cursor: default;
+    }
+    .anim-line.active {
+      background-color: #37373d;
+    }
+    .anim-line-num {
+      color: #858585;
+      width: 25px;
+      text-align: right;
+      padding-right: 8px;
+      margin-right: 8px;
+      border-right: 1px solid #404040;
+      user-select: none;
+    }
+  </style>
+</head>
+<body class="p-8 bg-slate-100">
+
+  <div class="max-w-6xl mx-auto">
+    <h2 class="text-xl font-bold mb-4 text-slate-800">Uji Coba Komponen Animasi (Reusable)</h2>
+
+    <!-- Animasi Hello -->
+    <div class="border border-slate-300 rounded-lg overflow-hidden shadow-xl bg-white">
+      <div class="bg-slate-800 px-3 py-2 text-white text-[13px] font-bold flex justify-between items-center">
+        <span>Simulasi Eksekusi: Debugger View</span>
+        <select id="sim-mode" onchange="changeSimMode(this.value)" class="bg-slate-700 text-xs px-2 py-1 rounded border-none outline-none text-white">
+          <option value="x64">Mode: x64 (64-bit)</option>
+          <option value="x86">Mode: x86 (32-bit)</option>
+        </select>
+      </div>
+      
+      <div class="flex flex-col lg:flex-row debug-panel h-[450px]">
+        
+        <!-- Code Panel (Kiri) -->
+        <div class="flex-[1.2] flex flex-col debug-border-r overflow-hidden">
+          <div class="debug-header">Source Code</div>
+          <div class="anim-panel-code flex-1 overflow-auto py-2" id="anim-code-view">
+            <!-- Diisi oleh JS -->
+          </div>
+        </div>
+        
+        <!-- Dashboard Debugger (Kanan) -->
+        <div class="flex-[2] flex flex-col overflow-hidden">
+          
+          <div class="flex flex-1 debug-border-b overflow-hidden">
+            <!-- 2.a Registers -->
+            <div class="flex-1 flex flex-col debug-border-r overflow-hidden">
+              <div class="debug-header">Registers</div>
+              <div class="flex-1 overflow-auto p-2 leading-relaxed" id="anim-regs-view">
+                <!-- Diisi oleh JS -->
+              </div>
+            </div>
+            
+            <!-- 2.c Disassembly -->
+            <div class="flex-1 flex flex-col overflow-hidden">
+              <div class="debug-header">Disassembly</div>
+              <div class="flex-1 overflow-auto p-2 leading-relaxed" id="anim-disasm-view">
+                <!-- Diisi oleh JS -->
+              </div>
+            </div>
+          </div>
+
+          <div class="flex flex-1 overflow-hidden">
+            <!-- 2.b Stack Memory -->
+            <div class="flex-1 flex flex-col debug-border-r overflow-hidden">
+              <div class="debug-header">Stack memory</div>
+              <div class="flex-1 overflow-auto p-2 leading-relaxed" id="anim-stack-view">
+                <!-- Diisi oleh JS -->
+              </div>
+            </div>
+            
+            <!-- 2.d Terminal -->
+            <div class="flex-1 flex flex-col overflow-hidden">
+              <div class="debug-header">Terminal</div>
+              <div class="flex-1 overflow-auto p-2 leading-relaxed text-slate-300" id="anim-term-view">
+                <!-- Diisi oleh JS -->
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      
+      <!-- Controls -->
+      <div class="bg-slate-100 border-t border-slate-300 px-3 py-2 flex gap-2">
+        <button onclick="stepAnim()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded shadow transition-colors flex items-center gap-1">Langkah Selanjutnya ⏭️</button>
+        <button onclick="resetAnim()" class="px-4 py-1.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold rounded shadow-sm transition-colors">Ulangi 🔄</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentMode = 'x64';
+    let currentStep = 0;
+
+    const dummyData = {
+      x64: {
+        code: [
+          "section .data",
+          "    msg db 'Hello', 0",
+          "",
+          "section .text",
+          "global main",
+          "main:",
+          "    sub rsp, 32         ; Shadow space",
+          "    lea rcx, [rel msg]  ; Argumen 1",
+          "    call printf         ; Panggil cetak",
+          "    add rsp, 32         ; Bersihkan stack",
+          "    ret"
+        ],
+        steps: [
+          {
+            l: 5,
+            regs: { "rax": "0x00000000", "rbx": "0x00000000", "rcx": "0x00000000", "rsp": "0x00007FFFFFFFE000", "rip": "0x00000000004000b0" },
+            disasm: [
+              { addr: "004000b0", bytes: "48 83 ec 20", inst: "sub rsp, 0x20", active: true },
+              { addr: "004000b4", bytes: "48 8d 0d ...", inst: "lea rcx, [rip+0x...]", active: false },
+              { addr: "004000bb", bytes: "e8 00 00 00", inst: "call printf", active: false }
+            ],
+            stack: [
+              { addr: "00007FFFFFFFE000", bytes: "00 00 00 00", ascii: "...." },
+              { addr: "00007FFFFFFFDFE0", bytes: "00 00 00 00", ascii: "...." }
+            ],
+            term: "Initializing blink emulator...\nblink ready!\n$ /program\n"
+          },
+          {
+            l: 6,
+            regs: { "rax": "0x00000000", "rbx": "0x00000000", "rcx": "0x00000000", "rsp": "0x00007FFFFFFFDFE0", "rip": "0x00000000004000b4" },
+            disasm: [
+              { addr: "004000b0", bytes: "48 83 ec 20", inst: "sub rsp, 0x20", active: false },
+              { addr: "004000b4", bytes: "48 8d 0d ...", inst: "lea rcx, [rip+0x...]", active: true },
+              { addr: "004000bb", bytes: "e8 00 00 00", inst: "call printf", active: false }
+            ],
+            stack: [
+              { addr: "00007FFFFFFFE000", bytes: "00 00 00 00", ascii: "...." },
+              { addr: "00007FFFFFFFDFE0", bytes: "00 00 00 00", ascii: "...." }
+            ],
+            term: "Initializing blink emulator...\nblink ready!\n$ /program\n"
+          },
+          {
+            l: 7,
+            regs: { "rax": "0x00000000", "rbx": "0x00000000", "rcx": "0x000000402000", "rsp": "0x00007FFFFFFFDFE0", "rip": "0x00000000004000bb" },
+            disasm: [
+              { addr: "004000b0", bytes: "48 83 ec 20", inst: "sub rsp, 0x20", active: false },
+              { addr: "004000b4", bytes: "48 8d 0d ...", inst: "lea rcx, [rip+0x...]", active: false },
+              { addr: "004000bb", bytes: "e8 00 00 00", inst: "call printf", active: true }
+            ],
+            stack: [
+              { addr: "00007FFFFFFFE000", bytes: "00 00 00 00", ascii: "...." },
+              { addr: "00007FFFFFFFDFE0", bytes: "00 00 00 00", ascii: "...." }
+            ],
+            term: "Initializing blink emulator...\nblink ready!\n$ /program\n"
+          },
+          {
+            l: 8,
+            regs: { "rax": "0x00000006", "rbx": "0x00000000", "rcx": "0x000000402000", "rsp": "0x00007FFFFFFFDFE0", "rip": "0x00000000004000c0" },
+            disasm: [
+              { addr: "004000b4", bytes: "48 8d 0d ...", inst: "lea rcx, [rip+0x...]", active: false },
+              { addr: "004000bb", bytes: "e8 00 00 00", inst: "call printf", active: false },
+              { addr: "004000c0", bytes: "48 83 c4 20", inst: "add rsp, 0x20", active: true }
+            ],
+            stack: [
+              { addr: "00007FFFFFFFE000", bytes: "00 00 00 00", ascii: "...." },
+              { addr: "00007FFFFFFFDFE0", bytes: "00 00 00 00", ascii: "...." }
+            ],
+            term: "Initializing blink emulator...\nblink ready!\n$ /program\nHello"
+          }
+        ]
+      },
+      x86: {
+        code: [
+          "section .data",
+          "    msg db 'Hello', 0",
+          "",
+          "section .text",
+          "global main",
+          "main:",
+          "    push msg          ; Argumen 1",
+          "    call printf       ; Panggil cetak",
+          "    add esp, 4        ; Bersihkan stack",
+          "    ret"
+        ],
+        steps: [
+          {
+            l: 5,
+            regs: { "eax": "0x00000000", "ebx": "0x00000000", "ecx": "0x00000000", "esp": "0xFFFFE000", "eip": "0x004000b0" },
+            disasm: [
+              { addr: "004000b0", bytes: "68 00 20 40 00", inst: "push 0x402000", active: true },
+              { addr: "004000b5", bytes: "e8 00 00 00 00", inst: "call printf", active: false }
+            ],
+            stack: [
+              { addr: "FFFFE000", bytes: "00 00 00 00", ascii: "...." }
+            ],
+            term: "Initializing emulator...\n$ /program\n"
+          },
+          {
+            l: 6,
+            regs: { "eax": "0x00000000", "ebx": "0x00000000", "ecx": "0x00000000", "esp": "0xFFFFDFFC", "eip": "0x004000b5" },
+            disasm: [
+              { addr: "004000b0", bytes: "68 00 20 40 00", inst: "push 0x402000", active: false },
+              { addr: "004000b5", bytes: "e8 00 00 00 00", inst: "call printf", active: true }
+            ],
+            stack: [
+              { addr: "FFFFE000", bytes: "00 00 00 00", ascii: "...." },
+              { addr: "FFFFDFFC", bytes: "00 20 40 00", ascii: ". @" }
+            ],
+            term: "Initializing emulator...\n$ /program\n"
+          },
+          {
+            l: 7,
+            regs: { "eax": "0x00000006", "ebx": "0x00000000", "ecx": "0x00000000", "esp": "0xFFFFDFFC", "eip": "0x004000ba" },
+            disasm: [
+              { addr: "004000b0", bytes: "68 00 20 40 00", inst: "push 0x402000", active: false },
+              { addr: "004000b5", bytes: "e8 00 00 00 00", inst: "call printf", active: false },
+              { addr: "004000ba", bytes: "83 c4 04", inst: "add esp, 4", active: true }
+            ],
+            stack: [
+              { addr: "FFFFE000", bytes: "00 00 00 00", ascii: "...." },
+              { addr: "FFFFDFFC", bytes: "00 20 40 00", ascii: ". @" }
+            ],
+            term: "Initializing emulator...\n$ /program\nHello"
+          }
+        ]
+      }
+    };
+
+    function updateAnimUI() {
+      const data = dummyData[currentMode];
+      const step = data.steps[currentStep];
+
+      // Render Code Panel
+      let codeHtml = data.code.map((line, i) => {
+        let isActive = (i === step.l);
+        return `<div class="anim-line ${isActive ? 'active' : ''}">
+                  <div class="anim-line-num">${i + 1}</div>
+                  <div class="flex-1 whitespace-pre">${line}</div>
+                </div>`;
+      }).join('');
+      document.getElementById('anim-code-view').innerHTML = codeHtml;
+
+      // Render Registers
+      let regsHtml = '';
+      for (const [reg, val] of Object.entries(step.regs)) {
+        regsHtml += `<div><span class="reg-name">${reg.padEnd(5, ' ')}</span> : <span class="reg-val">${val}</span></div>`;
+      }
+      document.getElementById('anim-regs-view').innerHTML = `<pre class="m-0 whitespace-pre">${regsHtml}</pre>`;
+
+      // Render Disassembly
+      let disasmHtml = step.disasm.map(d => {
+        let bgClass = d.active ? 'bg-[#37373d]' : '';
+        return `<div class="flex ${bgClass} py-0.5">
+                  <div class="disasm-addr w-[70px]">${d.addr}</div>
+                  <div class="disasm-bytes w-[90px] whitespace-nowrap overflow-hidden text-ellipsis">${d.bytes}</div>
+                  <div class="disasm-inst flex-1">${d.inst}</div>
+                </div>`;
+      }).join('');
+      document.getElementById('anim-disasm-view').innerHTML = disasmHtml;
+
+      // Render Stack
+      let stackHtml = step.stack.map(s => {
+        return `<div class="flex py-0.5">
+                  <div class="stack-addr w-[120px] text-right">${s.addr}</div>
+                  <div class="stack-bytes flex-1">${s.bytes}</div>
+                  <div class="text-[#858585]">${s.ascii}</div>
+                </div>`;
+      }).join('');
+      document.getElementById('anim-stack-view').innerHTML = stackHtml;
+
+      // Render Terminal
+      document.getElementById('anim-term-view').innerHTML = `<pre class="m-0 whitespace-pre-wrap">${step.term}</pre>`;
+    }
+
+    window.stepAnim = function() {
+      const data = dummyData[currentMode];
+      currentStep = (currentStep + 1) % data.steps.length;
+      updateAnimUI();
+    };
+
+    window.resetAnim = function() {
+      currentStep = 0;
+      updateAnimUI();
+    };
+
+    window.changeSimMode = function(mode) {
+      currentMode = mode;
+      resetAnim();
+    };
+
+    // Initial load
+    resetAnim();
+  </script>
+</body>
+</html>
