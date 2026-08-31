@@ -47,7 +47,7 @@
               v-for="(d, idx) in defaultDisassembly" 
               :key="idx"
               class="flex py-0.5"
-              :class="d.active ? 'bg-[#37373d]' : ''"
+              :class="d.active ? 'bg-[#37373d] active-row' : ''"
             >
               <div class="hl-addr w-[60px] shrink-0">{{ d.addr }}</div>
               <div class="hl-bytes w-[85px] shrink-0">{{ d.bytes }}</div>
@@ -68,7 +68,7 @@
         <div class="anim-panel-header">Stack memory</div>
         <div class="flex-1 overflow-y-scroll overflow-x-auto p-2">
           <div class="w-max min-w-full whitespace-nowrap">
-            <div v-for="(s, idx) in defaultStack" :key="idx" class="flex py-0.5">
+            <div v-for="(s, idx) in defaultStack" :key="idx" class="flex py-0.5" :class="s.active ? 'bg-[#37373d] active-row' : ''">
               <div class="hl-addr text-right shrink-0" :class="mode === 'x64' ? 'w-[120px]' : 'w-[60px]'">{{ s.addr }}</div>
               <div class="hl-bytes shrink-0">{{ s.bytes }}</div>
               <div class="hl-addr shrink-0">{{ s.ascii }}</div>
@@ -237,8 +237,9 @@ const defaultStack = computed(() => {
   const sourceList = stackHistory.value.length > 0 ? stackHistory.value : (props.stack || [])
   
   for (let i = 0; i < numRows; i++) {
+    let itemData;
     if (i < sourceList.length) {
-      stackList.push(sourceList[i])
+      itemData = { ...sourceList[i] }
     } else {
       let prevAddrStr = i > 0 ? stackList[i - 1].addr : (props.mode === 'x86' ? '00000000' : '0000000000000000')
       let prevAddrNum = parseInt(prevAddrStr, 16) || 0
@@ -251,12 +252,20 @@ const defaultStack = computed(() => {
       let emptyBytes = props.mode === 'x86' ? '00 00 00 00' : '00 00 00 00 00 00 00 00'
       let emptyAscii = props.mode === 'x86' ? '....' : '........'
 
-      stackList.push({
+      itemData = {
         addr: nextAddrStr,
         bytes: emptyBytes,
         ascii: emptyAscii
-      })
+      }
     }
+
+    // Identify if this stack memory address is active (changed in the current step)
+    itemData.active = false
+    if (props.stack && props.stack.find(s => s.addr === itemData.addr)) {
+      itemData.active = true
+    }
+
+    stackList.push(itemData)
   }
   return stackList
 })
@@ -317,7 +326,18 @@ const defaultStack = computed(() => {
   text-align: right;
   padding-right: 10px;
   margin-right: 10px;
-  border-right: 1px solid #404040;
   user-select: none;
+}
+
+/* Active Highlight for Disasm & Stack */
+.active-row {
+  border-left: 2px solid #569cd6;
+  margin-left: -2px;
+}
+.active-row .hl-addr,
+.active-row .hl-bytes,
+.active-row .hl-inst {
+  color: #ffffff !important;
+  font-weight: bold !important;
 }
 </style>
