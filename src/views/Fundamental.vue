@@ -928,7 +928,11 @@ main:
         <LogikaTab :currentArch="currentArch" />
       </template>
 
-      <!-- Old template layout for loop -->
+      <template v-else-if="activeTab === 'loop'">
+        <LoopingTab :currentArch="currentArch" />
+      </template>
+
+      <!-- Old template layout for fallback / other tabs -->
       <template v-else>
         <h2 class="section-title">{{ activeData.title }}</h2>
         <p class="content-desc">{{ activeData.desc[currentArch] }}</p>
@@ -1012,6 +1016,7 @@ import { animDb } from '../data/cpp_asm_data.js'
 import DataTransferTab from '../components/DataTransferTab.vue'
 import ArithmeticTab from '../components/ArithmeticTab.vue'
 import LogikaTab from '../components/LogikaTab.vue'
+import LoopingTab from '../components/LoopingTab.vue'
 
 const tabs = [
   { id: 'fund', label: 'Fundamental' },
@@ -1019,7 +1024,7 @@ const tabs = [
   { id: 'transfer', label: 'Data Transfer' },
   { id: 'arith', label: 'Aritmatika' },
   { id: 'cond', label: 'Perbandingan' },
-  { id: 'loop', label: 'Looping' }
+  { id: 'loop', label: 'Alur Control' }
 ]
 
 const currentArch = ref('x64')
@@ -1031,13 +1036,25 @@ const step62 = ref(0)
 const step63 = ref(0)
 
 const activeData = computed(() => {
+  if (activeTab.value === 'fund') {
+    return { title: 'Fundamental', desc: { x64: 'x64', x86: 'x86' } }
+  }
   if (activeTab.value === 'inst') {
     return { title: 'Instruksi Bahasa Mesin vs Assembly', desc: { x64: 'x64', x86: 'x86' } }
   }
   if (activeTab.value === 'transfer') {
     return { title: 'Data Transfer', desc: { x64: 'x64', x86: 'x86' } }
   }
-  return animDb[activeTab.value]
+  if (activeTab.value === 'arith') {
+    return { title: 'Aritmatika', desc: { x64: 'x64', x86: 'x86' } }
+  }
+  if (activeTab.value === 'cond') {
+    return { title: 'Perbandingan', desc: { x64: 'x64', x86: 'x86' } }
+  }
+  if (activeTab.value === 'loop') {
+    return { title: 'Instruksi Kontrol Alur & Looping', desc: { x64: 'x64', x86: 'x86' } }
+  }
+  return animDb[activeTab.value] || { title: '', desc: { x64: '', x86: '' } }
 })
 
 const currentSim = computed(() => {
